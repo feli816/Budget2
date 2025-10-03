@@ -1,0 +1,28 @@
+﻿{
+  "currency": "CHF",
+  "persons": [
+    { "id": "p1", "name": "Personne A" },
+    { "id": "p2", "name": "Personne B" }
+  ],
+  "accounts": [
+    { "id": "a1", "name": "Compte A", "iban": "CH00 AAAAA AAAAA AAAAAA", "opening_balance": 0, "owner_person_id": "p1" },
+    { "id": "a2", "name": "Compte B", "iban": "CH00 BBBBB BBBBB BBBBBB", "opening_balance": 0, "owner_person_id": "p2" }
+  ],
+  "categories": {
+    "income": [ "Salaire", "Allocations", "Loyers", "Titres", "Autres" ],
+    "expense": [ "Alimentation", "Logement", "Transport", "SantÃ©", "Loisirs", "Ã‰ducation", "Assurances", "ImpÃ´ts/Taxes", "Abonnements/Services", "Achats divers", "Divers" ]
+  },
+  "rules": [
+    { "id": "r1", "target_kind": "income",  "category": "Salaire",      "keywords": ["salaire", "payroll", "wage"], "priority": 100, "enabled": true },
+    { "id": "r2", "target_kind": "expense", "category": "Alimentation", "keywords": ["coop", "migros", "aldi", "lidl"], "priority": 90, "enabled": true },
+    { "id": "r3", "target_kind": "expense", "category": "Divers",       "keywords": ["twint", "carte"], "priority": 10, "enabled": true }
+  ],
+  "budgets": {
+    "monthly": [
+      { "scope": "household", "category": "Alimentation", "period": "2025-10", "ceiling_amount": 600 }
+    ],
+    "annual": [
+      { "scope": "household", "category": "SantÃ©", "year": 2025, "ceiling_amount": 1200 }
+    ]
+  }
+}

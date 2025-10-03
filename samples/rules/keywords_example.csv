@@ -1,0 +1,4 @@
+﻿target_kind,category,keywords,priority,enabled
+income,Salaire,""salaire;payroll;wage"",100,true
+expense,Alimentation,""coop;migros;aldi;lidl"",90,true
+expense,Divers,""twint;carte"",10,true
