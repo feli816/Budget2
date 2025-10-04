@@ -19,9 +19,12 @@ if (!databaseUrl) {
 const seedPath = path.join(__dirname, '..', 'seed.json');
 
 async function loadSeed() {
-  const raw = await fs.readFile(seedPath, 'utf8');
-  return JSON.parse(raw);
+  // Lis le fichier en binaire puis convertis → UTF-8 et retire un éventuel BOM
+  const raw = await fs.readFile(seedPath);
+  const text = raw.toString('utf8').replace(/^\uFEFF/, ''); // strip BOM si présent
+  return JSON.parse(text);
 }
+
 
 async function upsertPersons(client, persons = []) {
   for (const person of persons) {
