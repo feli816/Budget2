@@ -1,0 +1,15 @@
+{
+  "name": "budget-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate": "node ./scripts/run-migrations.js",
+    "seed": "node ./scripts/seed.js",
+    "db:reset": "node ./scripts/run-migrations.js --reset && node ./scripts/seed.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.5"
+  }
+}
