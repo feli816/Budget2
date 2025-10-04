@@ -63,3 +63,13 @@ Arrêter et supprimer le conteneur Docker PostgreSQL :
 ```bash
 docker stop budget-db && docker rm budget-db
 ```
+
+## API HTTP (Lot 2)
+
+Lancer l'API REST (Express) en local :
+
+```bash
+npm run dev
+```
+
+La documentation des endpoints, avec des exemples `curl` et Postman, est disponible dans [`API.md`](./API.md).
