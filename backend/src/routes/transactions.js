@@ -26,6 +26,7 @@ const baseSchema = z.object({
   description: z.string().trim().min(1),
   raw_description: z.string().trim().optional().nullable(),
   balance_after: z.number().finite().optional(),
+  status: z.string().trim().min(1).default('real'),
 });
 
 const createSchema = baseSchema;
@@ -100,13 +101,14 @@ router.post('/', async (req, res, next) => {
       payload.description,
       payload.raw_description ?? null,
       payload.balance_after ?? null,
+      payload.status ?? 'real',
     ];
     const { rows } = await pool.query(
       `INSERT INTO transaction (
          account_id, import_batch_id, rule_id, project_id, category_id, external_id,
-         occurred_on, value_date, amount, currency_code, description, raw_description, balance_after
+         occurred_on, value_date, amount, currency_code, description, raw_description, balance_after, status
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       values,
     );
@@ -152,6 +154,7 @@ router.put('/:id', async (req, res, next) => {
     if (payload.description !== undefined) add('description', payload.description);
     if (payload.raw_description !== undefined) add('raw_description', payload.raw_description ?? null);
     if (payload.balance_after !== undefined) add('balance_after', payload.balance_after ?? null);
+    if (payload.status !== undefined) add('status', payload.status);
 
     if (!entries.length) {
       throw new HttpError(400, 'No fields to update');
