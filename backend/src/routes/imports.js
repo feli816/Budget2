@@ -252,7 +252,7 @@ function extractMetadata(worksheet) {
 function parseWorksheet(worksheet) {
   const headerRow = worksheet.getRow(HEADER_ROW);
   if (!headerRow || headerRow.cellCount === 0) {
-    throw new HttpError(400, 'Ligne d\'en-têtes introuvable (ligne 9 attendue).');
+    throw new HttpError(400, "Ligne d'en-têtes introuvable (ligne 9 attendue).");
   }
 
   const headerMap = new Map();
@@ -262,11 +262,12 @@ function parseWorksheet(worksheet) {
       return;
     }
 
-    if (['dateoperation', 'date comptable', 'date operation'].includes(normalized)) {
+    // ✅ version corrigée et complète (fusion Codex + main)
+    if (['dateoperation', 'date comptable', 'date operation', 'date d execution'].includes(normalized)) {
       headerMap.set(colNumber, 'occurred_on');
     } else if (['datevaleur', 'date valeur'].includes(normalized)) {
       headerMap.set(colNumber, 'value_date');
-    } else if (['description', 'libelle', 'libelleoperation', 'libelle operation'].includes(normalized)) {
+    } else if (['description', 'libelle', 'libelleoperation', 'libelle operation', 'operations'].includes(normalized)) {
       headerMap.set(colNumber, 'description');
     } else if (normalized === 'debit') {
       headerMap.set(colNumber, 'debit');
@@ -332,6 +333,7 @@ function parseWorksheet(worksheet) {
 
   return rows;
 }
+
 
 async function parseExcelFile(buffer) {
   if (!ENABLE_XLSX) {
