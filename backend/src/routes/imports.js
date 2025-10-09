@@ -252,7 +252,7 @@ function extractMetadata(worksheet) {
 function parseWorksheet(worksheet) {
   const headerRow = worksheet.getRow(HEADER_ROW);
   if (!headerRow || headerRow.cellCount === 0) {
-    throw new HttpError(400, 'Ligne d\'en-têtes introuvable (ligne 9 attendue).');
+    throw new HttpError(400, "Ligne d'en-têtes introuvable (ligne 9 attendue).");
   }
 
   const headerMap = new Map();
@@ -262,6 +262,7 @@ function parseWorksheet(worksheet) {
       return;
     }
 
+    // ✅ version corrigée et complète (fusion Codex + main)
     if (['dateoperation', 'date comptable', 'date operation', 'date d execution'].includes(normalized)) {
       headerMap.set(colNumber, 'occurred_on');
     } else if (['datevaleur', 'date valeur'].includes(normalized)) {
@@ -332,6 +333,7 @@ function parseWorksheet(worksheet) {
 
   return rows;
 }
+
 
 async function parseExcelFile(buffer) {
   if (!ENABLE_XLSX) {
