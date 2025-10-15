@@ -1,4 +1,4 @@
-﻿{
+{
   "metadata": { "iban": "CH9300762011623852957", "expected_start_balance": 1532.45, "expected_end_balance": 1789.10 },
   "rows": [
     { "occurred_on": "2025-10-01", "description": "CB SUPERMARCHE", "debit": 42.90 },

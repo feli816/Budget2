@@ -465,11 +465,12 @@ router.post(
 
       const result = await withTransaction(async (client) => {
         const createdAt = await client.query(
-          `INSERT INTO import_batch (source, original_filename, hash, status)
-           VALUES ($1, $2, $3, $4)
-           RETURNING *`,
-          ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub'],
-        );
+  `	 INSERT INTO import_batch (source, original_filename, hash, status)
+   	 VALUES ($1, $2, $3, $4)
+   	 RETURNING *`,
+  	 ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub', 'pending'],
+	);
+
         const importBatch = createdAt.rows[0];
 
         try {
