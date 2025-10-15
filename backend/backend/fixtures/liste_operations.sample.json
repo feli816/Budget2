@@ -1,8 +1,0 @@
-{
-  "metadata": { "iban": "CH9300762011623852957", "expected_start_balance": 1532.45, "expected_end_balance": 1789.10 },
-  "rows": [
-    { "occurred_on": "2025-10-01", "description": "CB SUPERMARCHE", "debit": 42.90 },
-    { "occurred_on": "2025-10-02", "description": "VIREMENT SALAIRE", "credit": 3500.00, "iban": "CH93 0076 2011 6238 5295 7" },
-    { "occurred_on": "2025-10-03", "description": "ABO GYM", "debit": 59.00 }
-  ]
-}
