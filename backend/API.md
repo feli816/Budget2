@@ -142,6 +142,108 @@ curl -X POST http://localhost:3000/budgets/annual \
 
 ---
 
+## Imports (`/imports`)
+
+### Import Excel (`POST /imports/excel`)
+Uploader un extrait bancaire `.xlsx` (onglet `Liste des opérations`, en-têtes ligne 9). Le backend crée un `import_batch`, ignore les doublons et applique les règles actives pour catégoriser chaque opération.
+
+> ℹ️ **Mode stub (CI/dev)** : par défaut, le serveur lit `backend/fixtures/liste_operations.sample.json` — aucun fichier à envoyer.
+
+```bash
+curl -X POST http://localhost:3000/imports/excel
+```
+
+#### Mode hors-DB (stub total)
+
+Lancer le serveur avec `DISABLE_DB=1` (et laisser `ENABLE_UPLOAD=0`, `ENABLE_XLSX=0`). Les endpoints `POST /imports/excel` et `GET /imports/:id` renvoient un rapport simulé basé sur `backend/fixtures/liste_operations.sample.json`, sans connexion à la base de données.
+
+```bash
+# Windows (cmd)
+set DISABLE_DB=1 && set ENABLE_UPLOAD=0 && set ENABLE_XLSX=0 && node src\server.js
+
+# Health
+curl http://localhost:3000/health
+
+# Créer un import stub
+curl -X POST http://localhost:3000/imports/excel
+
+# Récupérer le rapport
+curl http://localhost:3000/imports/1
+```
+
+Tests d'acceptation (UAT) :
+
+- `GET /health` → `{ "status": "ok" }`.
+- `POST /imports/excel` → `201` avec `import_batch_id > 0`, `report.totals.parsed == report.totals.created >= 1`, toutes les valeurs `report.ignored.*` à `0`, et `report.balances.expected.*` recopiées depuis le fixture quand disponibles.
+- `GET /imports/:id` → `200` avec le batch simulé complet (`status` = `completed`, `rows_count == report.totals.parsed`).
+
+Pour tester un vrai fichier `.xlsx` en local :
+
+```bash
+ENABLE_UPLOAD=1 ENABLE_XLSX=1 node src/server.js
+
+curl -X POST http://localhost:3000/imports/excel \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@/chemin/vers/releve.xlsx"
+```
+
+Réponse (201) :
+
+```json
+{
+  "import_batch_id": 4,
+  "report": {
+    "totals": { "parsed": 3, "created": 3, "ignored": 0 },
+    "ignored": { "duplicates": 0, "missing_account": 0, "invalid": 0 },
+    "categories": [
+      { "id": 1, "name": "Salaire", "kind": "income", "count": 1 },
+      { "id": 2, "name": "Alimentation", "kind": "expense", "count": 1 },
+      { "id": 9, "name": "Divers", "kind": "expense", "count": 1 }
+    ],
+    "balances": {
+      "expected": { "start": 1250.5, "end": 2100.1 },
+      "actual": { "start": 1250.5, "end": 2100.1 }
+    }
+  }
+}
+```
+
+### Rapport d'import (`GET /imports/:id`)
+
+```bash
+curl http://localhost:3000/imports/4
+```
+
+Réponse :
+
+```json
+{
+  "id": 4,
+  "source": "excel",
+  "original_filename": "example-statement.xlsx",
+  "status": "completed",
+  "rows_count": 3,
+  "report": {
+    "totals": { "parsed": 3, "created": 3, "ignored": 0 },
+    "ignored": { "duplicates": 0, "missing_account": 0, "invalid": 0 },
+    "accounts": [
+      { "id": "a1", "name": "Compte A", "iban": "CH00 AAAAA AAAAA AAAAAA", "created": 3 }
+    ],
+    "categories": [
+      { "id": 1, "name": "Salaire", "kind": "income", "count": 1 },
+      { "id": 2, "name": "Alimentation", "kind": "expense", "count": 1 },
+      { "id": 9, "name": "Divers", "kind": "expense", "count": 1 }
+    ],
+    "balances": {
+      "expected": { "start": 1250.5, "end": 2100.1 },
+      "actual": { "start": 1250.5, "end": 2100.1 }
+    }
+  }
+}
+```
+
+---
+
 ## Collection Postman
 Un export JSON prêt à l'emploi est disponible dans `docs/postman/Budget-API.postman_collection.json`. Importez-le dans Postman et mettez à jour la variable `baseUrl` si nécessaire.
 

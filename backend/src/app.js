@@ -10,6 +10,7 @@ import transactionsRouter from './routes/transactions.js';
 import provisionsRouter from './routes/provisions.js';
 import projectsRouter from './routes/projects.js';
 import budgetsRouter from './routes/budgets.js';
+import importsRouter from './routes/imports.js';
 import { HttpError } from './errors.js';
 
 export function createApp() {
@@ -31,6 +32,7 @@ export function createApp() {
   app.use('/provisions', provisionsRouter);
   app.use('/projects', projectsRouter);
   app.use('/budgets', budgetsRouter);
+  app.use('/imports', importsRouter);
 
   app.use((req, res, next) => {
     next(new HttpError(404, 'Not found'));
