@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getHealth, postImportExcelStub, postImportExcelFile, getImportReport } from './api'
+import {
+  getHealth,
+  postImportExcelStub,
+  postImportExcelFile,
+  getImportReport,
+  getAccounts,
+  getCategories,
+  getTransactions,
+} from './api'
 
 function Badge({ ok }) {
   return (
@@ -55,9 +63,38 @@ function Table({ headers, rows, emptyLabel = 'Aucune donnée' }) {
   )
 }
 
+function formatDate(value) {
+  if (!value) return '-'
+  try {
+    return new Intl.DateTimeFormat('fr-CH', { dateStyle: 'medium' }).format(new Date(value))
+  } catch (e) {
+    return String(value)
+  }
+}
+
+function formatAmount(amount, currency = 'CHF') {
+  if (typeof amount !== 'number' || Number.isNaN(amount)) return '-'
+  try {
+    return new Intl.NumberFormat('fr-CH', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
+  } catch (e) {
+    return `${amount.toFixed(2)} ${currency}`
+  }
+}
+
+const categoryKindLabels = {
+  income: 'Revenus',
+  expense: 'Dépenses',
+  transfer: 'Transferts',
+}
+
 export default function App() {
   const [health, setHealth] = useState(null)
-  const [err, setErr] = useState('')
+  const [importErr, setImportErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   const [file, setFile] = useState(null)
@@ -67,12 +104,75 @@ export default function App() {
   const [batchId, setBatchId] = useState('')
   const [report, setReport] = useState(null)
 
+  const [accounts, setAccounts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [transactions, setTransactions] = useState([])
+  const [transactionsErr, setTransactionsErr] = useState('')
+  const [transactionsMetaErr, setTransactionsMetaErr] = useState('')
+  const [transactionsBusy, setTransactionsBusy] = useState(false)
+  const [filters, setFilters] = useState({ accountId: '', categoryId: '', limit: '50' })
+
   useEffect(() => {
-    getHealth().then(setHealth).catch(e => setErr(e.message))
+    getHealth().then(setHealth).catch(e => setImportErr(e.message))
   }, [])
 
+  useEffect(() => {
+    let active = true
+    async function loadMeta() {
+      try {
+        const [accs, cats] = await Promise.all([getAccounts(), getCategories()])
+        if (!active) return
+        setAccounts(accs)
+        setCategories(cats)
+      } catch (error) {
+        if (!active) return
+        setTransactionsMetaErr(error.message || String(error))
+      }
+    }
+    loadMeta()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let active = true
+
+    const query = {}
+    if (filters.accountId) query.account_id = filters.accountId
+    if (filters.categoryId) query.category_id = filters.categoryId
+    const limitNumber = Number(filters.limit)
+    if (!Number.isNaN(limitNumber) && limitNumber > 0) {
+      query.limit = limitNumber
+    }
+
+    setTransactionsBusy(true)
+    setTransactionsErr('')
+
+    getTransactions(query, { signal: controller.signal })
+      .then(data => {
+        if (!active) return
+        setTransactions(Array.isArray(data) ? data : [])
+      })
+      .catch(error => {
+        if (!active || error.name === 'AbortError') return
+        setTransactionsErr(error.message || String(error))
+        setTransactions([])
+      })
+      .finally(() => {
+        if (!active) return
+        setTransactionsBusy(false)
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [filters.accountId, filters.categoryId, filters.limit])
+
   async function handleCreateImport() {
-    setErr('')
+    setImportErr('')
     setBusy(true)
     setReport(null)
 
@@ -93,7 +193,7 @@ export default function App() {
         setBatchId(String(data.import_batch_id))
       }
     } catch (e) {
-      setErr(e.message || String(e))
+      setImportErr(e.message || String(e))
     } finally {
       setBusy(false)
     }
@@ -101,13 +201,13 @@ export default function App() {
 
   async function handleFetchReport() {
     if (!batchId) return
-    setErr('')
+    setImportErr('')
     setBusy(true)
     try {
       const data = await getImportReport(batchId)
       setReport(data)
     } catch (e) {
-      setErr(e.message || String(e))
+      setImportErr(e.message || String(e))
     } finally {
       setBusy(false)
     }
@@ -127,15 +227,172 @@ export default function App() {
   const ignored = report?.report?.ignored || {}
   const balances = report?.report?.balances || {}
 
+  const accountById = useMemo(() => {
+    return Object.fromEntries(accounts.map(acc => [acc.id, acc]))
+  }, [accounts])
+
+  const categoryById = useMemo(() => {
+    return Object.fromEntries(categories.map(cat => [String(cat.id), cat]))
+  }, [categories])
+
+  const transactionsRows = useMemo(() => {
+    return transactions.map(trx => {
+      const account = accountById[trx.account_id]
+      const category = trx.category_id != null ? categoryById[String(trx.category_id)] : null
+      const amount = typeof trx.amount === 'number' ? trx.amount : Number(trx.amount)
+      const amountClass = amount < 0 ? 'text-red-600' : 'text-emerald-600'
+
+      return [
+        <span className="whitespace-nowrap" key="date">{formatDate(trx.occurred_on)}</span>,
+        <div className="space-y-1" key="desc">
+          <div className="font-medium">{trx.description}</div>
+          {trx.raw_description ? (
+            <div className="text-xs text-gray-500 whitespace-pre-wrap">{trx.raw_description}</div>
+          ) : null}
+        </div>,
+        <span className={`font-semibold ${amountClass}`} key="amount">
+          {formatAmount(amount, trx.currency_code || account?.currency_code || 'CHF')}
+        </span>,
+        <div className="text-sm" key="meta">
+          <div>{category ? `${category.name}` : 'Non catégorisé'}</div>
+          <div className="text-xs text-gray-500">{account ? account.name : trx.account_id}</div>
+        </div>,
+        <span className="text-xs uppercase tracking-wide text-gray-500" key="status">
+          {trx.status || 'real'}
+        </span>,
+      ]
+    })
+  }, [transactions, accountById, categoryById])
+
+  const transactionsTotal = useMemo(() => {
+    return transactions.reduce((sum, trx) => sum + Number(trx.amount || 0), 0)
+  }, [transactions])
+
+  const accountOptions = useMemo(() => {
+    return accounts.map(acc => ({ value: acc.id, label: acc.name || acc.id }))
+  }, [accounts])
+
+  const categoryOptions = useMemo(() => {
+    return categories.map(cat => ({
+      value: String(cat.id),
+      label: `${categoryKindLabels[cat.kind] || cat.kind} — ${cat.name}`,
+    }))
+  }, [categories])
+
+  function handleFilterChange(key, value) {
+    setFilters(prev => ({ ...prev, [key]: value }))
+  }
+
+  function handleResetFilters() {
+    setFilters({ accountId: '', categoryId: '', limit: '50' })
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <div className="max-w-5xl mx-auto p-6 space-y-6">
-        <h1 className="text-2xl font-bold">Budget — Frontend (Lot 5)</h1>
+        <h1 className="text-2xl font-bold">Budget — Frontend (Lot 6)</h1>
 
         <Card title="Santé backend" right={<Badge ok={health?.status === 'ok'} />}>
           <pre className="text-sm bg-gray-100 p-3 rounded overflow-auto">
             {JSON.stringify(health, null, 2)}
           </pre>
+        </Card>
+
+        <Card
+          title="Transactions"
+          right={
+            <span className="text-sm px-2 py-1 rounded bg-amber-50 text-amber-700">
+              Liste temps-réel avec filtres
+            </span>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-4">
+              <label className="text-sm space-y-1">
+                <span className="text-gray-600">Compte</span>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={filters.accountId}
+                  onChange={e => handleFilterChange('accountId', e.target.value)}
+                >
+                  <option value="">Tous</option>
+                  {accountOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-sm space-y-1">
+                <span className="text-gray-600">Catégorie</span>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={filters.categoryId}
+                  onChange={e => handleFilterChange('categoryId', e.target.value)}
+                >
+                  <option value="">Toutes</option>
+                  {categoryOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-sm space-y-1">
+                <span className="text-gray-600">Limite</span>
+                <input
+                  type="number"
+                  min={1}
+                  className="border rounded px-3 py-2 w-full"
+                  value={filters.limit}
+                  onChange={e => handleFilterChange('limit', e.target.value)}
+                />
+              </label>
+
+              <div className="flex items-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Réinitialiser
+                </button>
+                {transactionsBusy ? (
+                  <span className="text-xs text-gray-500">Chargement…</span>
+                ) : null}
+              </div>
+            </div>
+
+            {transactionsMetaErr ? (
+              <p className="text-sm text-red-600">{transactionsMetaErr}</p>
+            ) : null}
+            {transactionsErr ? (
+              <p className="text-sm text-red-600">{transactionsErr}</p>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+              <div>
+                {transactions.length} transaction{transactions.length > 1 ? 's' : ''}
+                {filters.accountId
+                  ? ` · ${accountById[filters.accountId]?.name || filters.accountId}`
+                  : ''}
+                {filters.categoryId
+                  ? ` · ${categoryById[filters.categoryId]?.name || 'Catégorie inconnue'}`
+                  : ''}
+              </div>
+              <div className={`font-semibold ${transactionsTotal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                Total affiché : {formatAmount(transactionsTotal, 'CHF')}
+              </div>
+            </div>
+
+            <Table
+              headers={['Date', 'Description', 'Montant', 'Catégorie & Compte', 'Statut']}
+              rows={transactionsRows}
+              emptyLabel={transactionsBusy ? 'Chargement…' : 'Aucune transaction'}
+            />
+          </div>
         </Card>
 
         <Card
@@ -180,7 +437,7 @@ export default function App() {
                 </button>
               </div>
 
-              {err ? <p className="text-sm text-red-600">Erreur : {err}</p> : null}
+              {importErr ? <p className="text-sm text-red-600">Erreur : {importErr}</p> : null}
 
               {postResp && (
                 <div className="space-y-2">

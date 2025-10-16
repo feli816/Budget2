@@ -18,3 +18,11 @@
 
 ## 6. Dashboard
 - KPIs cohÃ©rents, barres annuelles (revenus/dÃ©penses/provisions), courbe solde mensuel ok.
+
+## 7. Transactions (Lot 6)
+- Lancer le frontend Lot 6 : la carte Transactions s'affiche avant l'import.
+- Les listes Comptes et CatÃ©gories sont alimentÃ©es par l'API (tous + libellÃ©s).
+- GET /transactions (limite 50) â‡’ tableau triÃ© par date desc., total affichÃ©.
+- Filtrer par compte â‡’ uniquement les opÃ©rations du compte + total mis Ã  jour.
+- Filtrer par catÃ©gorie â‡’ restreint la liste (0 â‡’ message Aucune transaction).
+- RÃ©initialiser â‡’ retour aux filtres par dÃ©faut et reload auto.
