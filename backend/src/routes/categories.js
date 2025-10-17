@@ -22,11 +22,12 @@ router.get('/', async (req, res, next) => {
   try {
     const kindFilter = req.query.kind;
     let rows;
+    const select = 'SELECT id, name, kind FROM category';
     if (kindFilter) {
       kindEnum.parse(kindFilter);
-      ({ rows } = await pool.query('SELECT * FROM category WHERE kind = $1 ORDER BY name ASC', [kindFilter]));
+      ({ rows } = await pool.query(`${select} WHERE kind = $1 ORDER BY name ASC`, [kindFilter]));
     } else {
-      ({ rows } = await pool.query('SELECT * FROM category ORDER BY kind ASC, name ASC'));
+      ({ rows } = await pool.query(`${select} ORDER BY kind ASC, name ASC`));
     }
     res.json(rows);
   } catch (error) {

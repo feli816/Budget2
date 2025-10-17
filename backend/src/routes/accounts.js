@@ -35,7 +35,9 @@ const updateSchema = baseSchema.partial().refine((value) => Object.keys(value).l
 
 router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM account ORDER BY created_at ASC');
+    const { rows } = await pool.query(
+      'SELECT id, name, iban, currency_code FROM account ORDER BY name ASC',
+    );
     res.json(rows);
   } catch (error) {
     next(error);

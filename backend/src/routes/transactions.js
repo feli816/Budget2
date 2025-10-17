@@ -53,22 +53,28 @@ router.get('/', async (req, res, next) => {
       clauses.push(`category_id = $${values.length}`);
     }
 
-    let query = 'SELECT * FROM transaction';
+    if (req.query.q) {
+      values.push(`%${req.query.q}%`);
+      clauses.push(`description ILIKE $${values.length}`);
+    }
+
+    let query =
+      'SELECT id, account_id, category_id, occurred_on, amount, currency_code, description, raw_description, status FROM transaction';
     if (clauses.length) {
       query += ` WHERE ${clauses.join(' AND ')}`;
     }
     query += ' ORDER BY occurred_on DESC, id DESC';
 
-    if (req.query.limit) {
+    if (req.query.limit !== undefined) {
       const limit = Number(req.query.limit);
-      if (!Number.isInteger(limit) || limit <= 0) {
-        throw new HttpError(400, 'limit must be a positive integer');
+      if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+        throw new HttpError(400, 'limit must be an integer between 1 and 100');
       }
       values.push(limit);
       query += ` LIMIT $${values.length}`;
     }
 
-    if (req.query.offset) {
+    if (req.query.offset !== undefined) {
       const offset = Number(req.query.offset);
       if (!Number.isInteger(offset) || offset < 0) {
         throw new HttpError(400, 'offset must be a non-negative integer');

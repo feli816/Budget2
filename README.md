@@ -26,3 +26,20 @@
 - RÃ©currence mensuelle (planned)
 - Dashboard: KPI + barres (annuel) + courbe (mensuelle)
 - UAT: import fichier exemple = ok ; re-import = doublons
+
+## Lot 8 — DB locale (lecture)
+
+Depuis le dossier `backend/` :
+
+```
+npm run db:up
+npm run db:schema
+npm run db:seed
+npm run dev
+```
+
+Puis, dans `frontend/` :
+
+```
+npm run dev
+```
