@@ -368,12 +368,12 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
     if (ENABLE_UPLOAD && !hasFile) {
       throw badRequest('Aucun fichier reçu.');
     }
-    if (hasFile && !req.file.originalname.endsWith('.xlsx')) {
+    if (hasFile && !req.file.originalname.toLowerCase().endsWith('.xlsx')) {
       throw badRequest('Format invalide : un fichier .xlsx est attendu.');
     }
 
     const buffer = hasFile ? req.file.buffer : Buffer.alloc(0);
-    const parsed = await parseExcelFile(buffer);
+    const parsed = ENABLE_UPLOAD ? await parseExcelFile(buffer) : await parseStubFile();
 
     const fileHash = hasFile ? createHash('sha256').update(buffer).digest('hex') : null;
 
