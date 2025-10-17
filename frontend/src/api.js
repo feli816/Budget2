@@ -39,3 +39,34 @@ export async function getImportReport(id) {
   const res = await fetch(`${API_URL}/imports/${encodeURIComponent(id)}`);
   return jsonOrThrow(res, `GET /imports/${id} failed`);
 }
+
+export async function getAccounts() {
+  const res = await fetch(`${API_URL}/accounts`);
+  return jsonOrThrow(res, 'GET /accounts failed');
+}
+
+export async function getCategories(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      search.append(key, value);
+    }
+  });
+  const query = search.toString();
+  const res = await fetch(`${API_URL}/categories${query ? `?${query}` : ''}`);
+  return jsonOrThrow(res, 'GET /categories failed');
+}
+
+export async function getTransactions(params = {}, options = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      search.append(key, value);
+    }
+  });
+  const query = search.toString();
+  const res = await fetch(`${API_URL}/transactions${query ? `?${query}` : ''}`, {
+    signal: options.signal,
+  });
+  return jsonOrThrow(res, 'GET /transactions failed');
+}

@@ -1,4 +1,4 @@
-# Lot 5 – Frontend Import (upload réel + rapport)
+# Lot 6 – Frontend Transactions (liste + filtres)
 
 ## Variables d'environnement
 - `VITE_API_URL` (par défaut `http://localhost:3000`)
@@ -28,11 +28,17 @@ Frontend :
 set VITE_UPLOAD_ENABLED=1 && npm run dev
 
 
-## Flux
+## Flux Import Excel
 1. Créer un import (POST /imports/excel) :
    - avec fichier .xlsx si UI upload active,
    - sinon fallback stub.
 2. Récupérer le rapport (GET /imports/:id) et afficher les cartes + JSON.
+
+## Transactions (Lot 6)
+- Liste des dernières transactions (GET /transactions) avec tri desc.
+- Filtres dynamiques par compte, catégorie et limite.
+- Affiche le nombre de lignes, la somme visible et la catégorisation.
+- Requêtes fetch natives, aucun ajout de dépendance.
 
 ## Notes
 - Aucune dépendance supplémentaire (fetch natif, Tailwind).
