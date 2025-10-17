@@ -34,6 +34,11 @@ set VITE_UPLOAD_ENABLED=1 && npm run dev
    - sinon fallback stub.
 2. Récupérer le rapport (GET /imports/:id) et afficher les cartes + JSON.
 
+## Lot 7 — Import Excel réel
+- Nécessite ENABLE_UPLOAD=1 & ENABLE_XLSX=1 côté backend.
+- Activer VITE_UPLOAD_ENABLED=1 côté frontend.
+- Permet de tester un fichier Excel réel (.xlsx) contenant l'onglet "Liste des opérations".
+
 ## Transactions (Lot 6)
 - Liste des dernières transactions (GET /transactions) avec tri desc.
 - Filtres dynamiques par compte, catégorie et limite.
