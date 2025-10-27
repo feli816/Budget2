@@ -43,3 +43,10 @@ Puis, dans `frontend/` :
 ```
 npm run dev
 ```
+
+## Lot 9 — Règles de catégorisation (CRUD + import)
+
+- Appliquer le schéma et le jeu d'essai avec `npm run db:rules` dans `backend/`.
+- L'API Express expose `/rules` (GET/POST/PUT/DELETE) avec tri `priority DESC, created_at ASC` et validations côté serveur.
+- L'import réel charge les règles actives depuis PostgreSQL, normalise les descriptions (minuscules, sans accents) et associe la catégorie lorsque le mot-clé est trouvé.
+- Le frontend dispose d'un onglet **Règles** pour gérer le CRUD (création, édition, suppression, activation) et affiche « DB désactivée » quand `DISABLE_DB=1`.

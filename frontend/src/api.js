@@ -70,3 +70,44 @@ export async function getTransactions(params = {}, options = {}) {
   });
   return jsonOrThrow(res, 'GET /transactions failed');
 }
+
+export async function getRules() {
+  const res = await fetch(`${API_URL}/rules`);
+  return jsonOrThrow(res, 'GET /rules failed');
+}
+
+export async function createRule(payload) {
+  const res = await fetch(`${API_URL}/rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res, 'POST /rules failed');
+}
+
+export async function updateRule(id, payload) {
+  const res = await fetch(`${API_URL}/rules/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res, `PUT /rules/${id} failed`);
+}
+
+export async function deleteRule(id) {
+  const res = await fetch(`${API_URL}/rules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (error) {
+      // ignore body parse errors
+    }
+    const msg =
+      (data && (data.error || data.message)) ||
+      `DELETE /rules/${id} failed: ${res.status} ${res.statusText}`;
+    throw new Error(msg);
+  }
+}
