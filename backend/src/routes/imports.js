@@ -451,10 +451,10 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
         const fallbackCategories = buildFallbackCategories(categoryRows);
 
         const { rows: ruleRows } = await client.query(
-          `SELECT r.id, r.target_kind, r.category_id, r.keywords, r.priority
-           FROM rule r
-           WHERE r.enabled = TRUE
-           ORDER BY r.priority DESC, r.created_at ASC`,
+          `SELECT id, target_kind, category_id, keywords, priority
+           FROM rule
+           WHERE enabled = TRUE
+           ORDER BY priority DESC, created_at ASC`,
         );
         const rules = ruleRows.map((rule) => ({
           ...rule,

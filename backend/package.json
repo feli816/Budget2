@@ -10,6 +10,7 @@
     "db:up": "docker compose -f ../docker-compose.dev.yml up -d db",
     "db:schema": "psql \"postgresql://budget:budget@localhost:5432/budget\" -f ./sql/001_schema.sql",
     "db:seed": "psql \"postgresql://budget:budget@localhost:5432/budget\" -f ./sql/002_seed_demo.sql",
+    "db:rules": "psql \"postgresql://budget:budget@localhost:5432/budget\" -f ./sql/003_rules.sql && psql \"postgresql://budget:budget@localhost:5432/budget\" -f ./sql/004_rules_seed.sql",
     "dev": "node --watch ./src/server.js"
   },
   "dependencies": {
