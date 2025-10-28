@@ -21,16 +21,30 @@ export async function getHealth() {
   return jsonOrThrow(res, 'GET /health failed');
 }
 
-export async function postImportExcelStub() {
+export async function postImportExcelStub(options = {}) {
   // Appel sans fichier (mode stub)
-  const res = await fetch(`${API_URL}/imports/excel`, { method: 'POST' });
+  const payload = {};
+  if (options?.iban) payload.iban = options.iban;
+  if (options?.startRow) payload.start_row = options.startRow;
+  const hasBody = Object.keys(payload).length > 0;
+  const res = await fetch(`${API_URL}/imports/excel`, {
+    method: 'POST',
+    ...(hasBody
+      ? {
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      : {}),
+  });
   return jsonOrThrow(res, 'POST /imports/excel (stub) failed');
 }
 
-export async function postImportExcelFile(file) {
+export async function postImportExcelFile(file, options = {}) {
   // Upload réel en multipart
   const fd = new FormData();
   fd.append('file', file);
+  if (options?.iban) fd.append('iban', options.iban);
+  if (options?.startRow) fd.append('start_row', options.startRow);
   const res = await fetch(`${API_URL}/imports/excel`, { method: 'POST', body: fd });
   return jsonOrThrow(res, 'POST /imports/excel (upload) failed');
 }

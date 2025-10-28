@@ -467,6 +467,8 @@ export default function App() {
   const [busy, setBusy] = useState(false)
 
   const [file, setFile] = useState(null)
+  const [manualIban, setManualIban] = useState('')
+  const [manualStartRow, setManualStartRow] = useState('')
   const uploadEnabled = import.meta.env.VITE_UPLOAD_ENABLED === '1'
 
   const [postResp, setPostResp] = useState(null)
@@ -553,10 +555,16 @@ export default function App() {
         if (!file.name.toLowerCase().endsWith('.xlsx')) {
           throw new Error('Un fichier .xlsx est attendu.')
         }
-        data = await postImportExcelFile(file)
+        data = await postImportExcelFile(file, {
+          iban: manualIban.trim(),
+          startRow: manualStartRow.trim(),
+        })
       } else {
         // Fallback stub
-        data = await postImportExcelStub()
+        data = await postImportExcelStub({
+          iban: manualIban.trim(),
+          startRow: manualStartRow.trim(),
+        })
       }
       setPostResp(data)
       if (data?.import_batch_id) {
@@ -817,6 +825,23 @@ export default function App() {
                     >
                       Créer un import (POST /imports/excel)
                     </button>
+
+                    <input
+                      type="text"
+                      className="border rounded px-3 py-2 w-56"
+                      placeholder="IBAN du compte"
+                      value={manualIban}
+                      onChange={e => setManualIban(e.target.value)}
+                    />
+
+                    <input
+                      type="number"
+                      min="1"
+                      className="border rounded px-3 py-2 w-40"
+                      placeholder="Ligne de début"
+                      value={manualStartRow}
+                      onChange={e => setManualStartRow(e.target.value)}
+                    />
 
                     <input
                       className="border rounded px-3 py-2 w-48"
