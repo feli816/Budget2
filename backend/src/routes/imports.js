@@ -33,6 +33,28 @@ if (ENABLE_UPLOAD) {
 const HEADER_ROW = 9;
 const IBAN_REGEX = /[A-Z]{2}\d{2}[A-Z0-9]{11,}/i;
 
+function parseStartRow(value) {
+  if (value === null || value === undefined) return null;
+  const raw = Array.isArray(value) ? value[0] : value;
+  const number = Number.parseInt(raw, 10);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return number;
+}
+
+function resolveWorksheetRows(startRow) {
+  if (!Number.isInteger(startRow) || startRow <= 0) {
+    return { headerRowNumber: HEADER_ROW, firstDataRowNumber: HEADER_ROW + 1 };
+  }
+
+  if (startRow === 1) {
+    return { headerRowNumber: 1, firstDataRowNumber: 2 };
+  }
+
+  const headerRowNumber = Math.max(1, startRow - 1);
+  const firstDataRowNumber = Math.max(headerRowNumber + 1, startRow);
+  return { headerRowNumber, firstDataRowNumber };
+}
+
 async function parseStubFile() {
   const p = path.join(process.cwd(), 'backend/fixtures/liste_operations.sample.json');
   const raw = JSON.parse(await fs.readFile(p, 'utf8'));
@@ -152,14 +174,14 @@ function computeTransactionHash(iban, date, amount, label) {
   return hash.digest('hex');
 }
 
-function extractMetadata(worksheet) {
+function extractMetadata(worksheet, headerRowNumber = HEADER_ROW) {
   const metadata = {
     iban: null,
     expected_start_balance: null,
     expected_end_balance: null,
   };
 
-  for (let rowIndex = 1; rowIndex < HEADER_ROW; rowIndex += 1) {
+  for (let rowIndex = 1; rowIndex < headerRowNumber; rowIndex += 1) {
     const row = worksheet.getRow(rowIndex);
     row.eachCell((cell, colNumber) => {
       const rawText = toText(cell.value);
@@ -194,10 +216,10 @@ function extractMetadata(worksheet) {
   return metadata;
 }
 
-function parseWorksheet(worksheet) {
-  const headerRow = worksheet.getRow(HEADER_ROW);
+function parseWorksheet(worksheet, headerRowNumber = HEADER_ROW, firstDataRowNumber) {
+  const headerRow = worksheet.getRow(headerRowNumber);
   if (!headerRow || headerRow.cellCount === 0) {
-    throw new HttpError(400, 'Ligne d\'en-têtes introuvable (ligne 9 attendue).');
+    throw new HttpError(400, `Ligne d'en-têtes introuvable (ligne ${headerRowNumber} attendue).`);
   }
 
   const headerMap = new Map();
@@ -228,7 +250,9 @@ function parseWorksheet(worksheet) {
   }
 
   const rows = [];
-  for (let rowNumber = HEADER_ROW + 1; rowNumber <= worksheet.actualRowCount; rowNumber += 1) {
+  const startRowNumber = firstDataRowNumber && firstDataRowNumber > headerRowNumber ? firstDataRowNumber : headerRowNumber + 1;
+
+  for (let rowNumber = startRowNumber; rowNumber <= worksheet.actualRowCount; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber);
     if (!row || row.cellCount === 0) continue;
 
@@ -274,7 +298,7 @@ function parseWorksheet(worksheet) {
   return rows;
 }
 
-async function parseExcelFile(buffer) {
+async function parseExcelFile(buffer, options = {}) {
   if (!ENABLE_XLSX) {
     // CI/dev: lecture du stub JSON
     return parseStubFile();
@@ -293,8 +317,10 @@ async function parseExcelFile(buffer) {
     throw new HttpError(400, 'Onglet "Liste des opérations" introuvable.');
   }
 
-  const metadata = extractMetadata(worksheet);
-  const rows = parseWorksheet(worksheet);
+  const { headerRowNumber, firstDataRowNumber } = resolveWorksheetRows(options.startRow);
+
+  const metadata = extractMetadata(worksheet, headerRowNumber);
+  const rows = parseWorksheet(worksheet, headerRowNumber, firstDataRowNumber);
 
   rows.sort((a, b) => {
     if (a.occurred_on && b.occurred_on && a.occurred_on !== b.occurred_on) {
@@ -373,7 +399,20 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
     }
 
     const buffer = hasFile ? req.file.buffer : Buffer.alloc(0);
-    const parsed = ENABLE_UPLOAD ? await parseExcelFile(buffer) : await parseStubFile();
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const manualIbanInput = body.iban ?? body.IBAN ?? null;
+    const startRowInput = body.start_row ?? body.startRow ?? null;
+
+    const manualIban = normalizeIban(manualIbanInput);
+    const startRow = parseStartRow(startRowInput);
+
+    const parsed = ENABLE_UPLOAD
+      ? await parseExcelFile(buffer, { startRow })
+      : await parseStubFile();
+
+    if (manualIban) {
+      parsed.metadata.iban = manualIban;
+    }
 
     const fileHash = hasFile ? createHash('sha256').update(buffer).digest('hex') : null;
 
@@ -386,6 +425,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       if (row.iban) ibans.add(row.iban);
     }
     if (parsed.metadata.iban) ibans.add(parsed.metadata.iban);
+    if (manualIban) ibans.add(manualIban);
     if (!ibans.size) {
       throw badRequest("Impossible de déterminer l'IBAN du compte associé.");
     }
