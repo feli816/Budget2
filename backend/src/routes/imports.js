@@ -33,36 +33,47 @@ if (ENABLE_UPLOAD) {
 const HEADER_ROW = 9;
 const IBAN_REGEX = /[A-Z]{2}\d{2}[A-Z0-9]{11,}/i;
 
+// -----------------------------------------------------
+// 🧩 Lecture du fichier stub (mode hors-DB)
+// -----------------------------------------------------
 async function parseStubFile() {
-  const p = path.join(process.cwd(), 'backend/fixtures/liste_operations.sample.json');
-  const raw = JSON.parse(await fs.readFile(p, 'utf8'));
-  const rows = (raw.rows || []).map((r) => {
-    const debit = Number.isFinite(r.debit) ? -Math.abs(r.debit) : 0;
-    const credit = Number.isFinite(r.credit) ? Math.abs(r.credit) : 0;
-    const amount = Number((credit + debit).toFixed(2));
-    const iban = (r.iban || raw.metadata?.iban || '')
-      .replace(/[^A-Za-z0-9]/g, '')
-      .toUpperCase()
-      .trim();
-    return {
-      occurred_on: r.occurred_on,
-      description: r.description || '',
-      value_date: r.value_date || null,
-      amount,
-      balance_after: r.balance_after ?? null,
-      iban: iban || null,
-    };
-  });
-  return { metadata: raw.metadata || {}, rows };
+  const p = path.resolve('backend/fixtures/liste_operations.sample.json');
+  try {
+    const raw = JSON.parse(await fs.readFile(p, 'utf8'));
+    const rows = (raw.rows || []).map((r) => {
+      const debit = Number.isFinite(r.debit) ? -Math.abs(r.debit) : 0;
+      const credit = Number.isFinite(r.credit) ? Math.abs(r.credit) : 0;
+      const amount = Number((credit + debit).toFixed(2));
+      const iban = (r.iban || raw.metadata?.iban || '')
+        .replace(/[^A-Za-z0-9]/g, '')
+        .toUpperCase()
+        .trim();
+      return {
+        occurred_on: r.occurred_on,
+        description: r.description || '',
+        value_date: r.value_date || null,
+        amount,
+        balance_after: r.balance_after ?? null,
+        iban: iban || null,
+      };
+    });
+    return { metadata: raw.metadata || {}, rows };
+  } catch (error) {
+    throw new HttpError(
+      500,
+      `Impossible de lire le fichier stub : ${p}\nDétail : ${error.message}`,
+    );
+  }
 }
 
+// -----------------------------------------------------
+// 🔠 Fonctions utilitaires
+// -----------------------------------------------------
 function toText(value) {
-  if (value === null || value === undefined) {
-    return '';
-  }
+  if (value === null || value === undefined) return '';
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
-  if (value.richText) return value.richText.map((part) => part.text).join('');
+  if (value.richText) return value.richText.map((p) => p.text).join('');
   if (value.text) return value.text;
   if (value.result !== undefined) return toText(value.result);
   return String(value);
@@ -90,9 +101,15 @@ function normalizeLabel(value) {
     .toLowerCase();
 }
 
+// ✅ Correction ici : nettoyage automatique des IBAN
 function normalizeIban(value) {
   if (!value) return null;
-  const text = toText(value).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  let text = toText(value)
+    .replace(/n°/gi, '')
+    .replace(/compte/gi, '')
+    .replace(/[:\s]/g, '')
+    .trim()
+    .toUpperCase();
   if (!text) return null;
   if (!IBAN_REGEX.test(text)) return null;
   return text;
@@ -101,13 +118,17 @@ function normalizeIban(value) {
 function parseNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const text = toText(value).replace(/\s+/g, '').replace(/'/g, '').replace(/\u00A0/g, '').replace(',', '.');
+  const text = toText(value)
+    .replace(/\s+/g, '')
+    .replace(/'/g, '')
+    .replace(/\u00A0/g, '')
+    .replace(',', '.');
   const number = Number(text);
   return Number.isFinite(number) ? number : null;
 }
 
 function parseExcelDate(value) {
-  if (value === null || value === undefined || value === '') return null;
+  if (!value) return null;
   if (value instanceof Date) return value;
   if (typeof value === 'number') {
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
@@ -118,31 +139,22 @@ function parseExcelDate(value) {
   const text = toText(value).trim();
   if (!text) return null;
 
-  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) {
-    const [, y, m, d] = isoMatch;
-    return new Date(Number(y), Number(m) - 1, Number(d));
-  }
-  const dotMatch = text.match(/^(\d{2})[.](\d{2})[.](\d{4})$/);
-  if (dotMatch) {
-    const [, d, m, y] = dotMatch;
-    return new Date(Number(y), Number(m) - 1, Number(d));
-  }
-  const slashMatch = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (slashMatch) {
-    const [, m, d, y] = slashMatch;
-    return new Date(Number(y), Number(m) - 1, Number(d));
-  }
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  const dot = text.match(/^(\d{2})[.](\d{2})[.](\d{4})$/);
+  if (dot) return new Date(Number(dot[3]), Number(dot[2]) - 1, Number(dot[1]));
+  const slash = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slash) return new Date(Number(slash[3]), Number(slash[1]) - 1, Number(slash[2]));
   return null;
 }
 
 function formatDate(value) {
   const date = parseExcelDate(value);
   if (!date) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function computeTransactionHash(iban, date, amount, label) {
@@ -152,79 +164,66 @@ function computeTransactionHash(iban, date, amount, label) {
   return hash.digest('hex');
 }
 
+// -----------------------------------------------------
+// 🧠 Extraction Excel + catégorisation + DB
+// -----------------------------------------------------
 function extractMetadata(worksheet) {
-  const metadata = {
-    iban: null,
-    expected_start_balance: null,
-    expected_end_balance: null,
-  };
-
+  const metadata = { iban: null, expected_start_balance: null, expected_end_balance: null };
   for (let rowIndex = 1; rowIndex < HEADER_ROW; rowIndex += 1) {
     const row = worksheet.getRow(rowIndex);
     row.eachCell((cell, colNumber) => {
       const rawText = toText(cell.value);
       if (!rawText) return;
-
       const normalized = normalizeHeader(rawText);
-
-      // IBAN: sur la cellule ou sa voisine de droite
       if (!metadata.iban) {
         const candidate = normalizeIban(rawText);
-        if (candidate) {
-          metadata.iban = candidate;
-        } else {
+        if (candidate) metadata.iban = candidate;
+        else {
           const rightCell = row.getCell(colNumber + 1);
           const rightCandidate = normalizeIban(rightCell?.value);
           if (rightCandidate) metadata.iban = rightCandidate;
         }
       }
-
       if (!metadata.expected_start_balance && /(soldeinitial|soldedebut)/.test(normalized)) {
         const neighbor = parseNumber(row.getCell(colNumber + 1)?.value);
         if (neighbor !== null) metadata.expected_start_balance = neighbor;
       }
-
       if (!metadata.expected_end_balance && /(soldefinal|soldefin)/.test(normalized)) {
         const neighbor = parseNumber(row.getCell(colNumber + 1)?.value);
         if (neighbor !== null) metadata.expected_end_balance = neighbor;
       }
     });
   }
-
   return metadata;
 }
+
 
 function parseWorksheet(worksheet) {
   const headerRow = worksheet.getRow(HEADER_ROW);
   if (!headerRow || headerRow.cellCount === 0) {
-    throw new HttpError(400, 'Ligne d\'en-têtes introuvable (ligne 9 attendue).');
+    throw new HttpError(400, "Ligne d'en-têtes introuvable (ligne 9 attendue).");
   }
 
   const headerMap = new Map();
   headerRow.eachCell((cell, colNumber) => {
     const normalized = normalizeHeader(cell.value);
     if (!normalized) return;
-
-    // mapping étendu (inclut "date d execution", "operations")
-    if (['dateoperation', 'date comptable', 'date operation', 'date d execution'].includes(normalized)) {
+    if (['dateoperation', 'date comptable', 'date operation', 'date d execution'].includes(normalized))
       headerMap.set(colNumber, 'occurred_on');
-    } else if (['datevaleur', 'date valeur'].includes(normalized)) {
+    else if (['datevaleur', 'date valeur'].includes(normalized))
       headerMap.set(colNumber, 'value_date');
-    } else if (['description', 'libelle', 'libelleoperation', 'libelle operation', 'operations'].includes(normalized)) {
+    else if (['description', 'libelle', 'libelleoperation', 'libelle operation', 'operations'].includes(normalized))
       headerMap.set(colNumber, 'description');
-    } else if (normalized === 'debit') {
-      headerMap.set(colNumber, 'debit');
-    } else if (normalized === 'credit') {
-      headerMap.set(colNumber, 'credit');
-    } else if (['solde', 'soldeapresoperation', 'solde apres operation'].includes(normalized)) {
+    else if (normalized === 'debit') headerMap.set(colNumber, 'debit');
+    else if (normalized === 'credit') headerMap.set(colNumber, 'credit');
+    else if (['solde', 'soldeapresoperation', 'solde apres operation'].includes(normalized))
       headerMap.set(colNumber, 'balance');
-    } else if (['compte', 'iban', 'compteiban', 'compte iban'].includes(normalized)) {
+    else if (['compte', 'iban', 'compteiban', 'compte iban'].includes(normalized))
       headerMap.set(colNumber, 'iban');
-    }
   });
 
   if (!headerMap.size) {
-    throw new HttpError(400, 'Colonnes attendues introuvables dans l\'onglet "Liste des opérations".');
+    throw new HttpError(400, 'Colonnes attendues introuvables dans l’onglet "Liste des opérations".');
   }
 
   const rows = [];
@@ -255,8 +254,6 @@ function parseWorksheet(worksheet) {
 
     const balanceAfter = parseNumber(record.balance);
     const iban = record.iban ? normalizeIban(record.iban) : null;
-
-    // ligne vide
     if (!rawDescription && amount === null && !occurredOn) continue;
 
     rows.push({
@@ -270,65 +267,48 @@ function parseWorksheet(worksheet) {
       iban,
     });
   }
-
   return rows;
 }
 
 async function parseExcelFile(buffer) {
   if (!ENABLE_XLSX) {
-    // CI/dev: lecture du stub JSON
     return parseStubFile();
   }
-
-  if (!buffer || buffer.length === 0) {
-    throw badRequest('Aucun fichier Excel reçu.');
-  }
-
+  if (!buffer || buffer.length === 0) throw badRequest('Aucun fichier Excel reçu.');
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
-
   const worksheet = workbook.getWorksheet('Liste des opérations');
-  if (!worksheet) {
-    throw new HttpError(400, 'Onglet "Liste des opérations" introuvable.');
-  }
-
+  if (!worksheet) throw new HttpError(400, 'Onglet "Liste des opérations" introuvable.');
   const metadata = extractMetadata(worksheet);
+  console.log("✅ IBAN détecté dans le fichier Excel :", metadata.iban);
   const rows = parseWorksheet(worksheet);
-
   rows.sort((a, b) => {
-    if (a.occurred_on && b.occurred_on && a.occurred_on !== b.occurred_on) {
+    if (a.occurred_on && b.occurred_on && a.occurred_on !== b.occurred_on)
       return a.occurred_on.localeCompare(b.occurred_on);
-    }
     return a.rowNumber - b.rowNumber;
   });
-
   const netChange = rows.reduce((acc, row) => acc + (row.amount ?? 0), 0);
   const rowsWithBalance = rows.filter((row) => row.balance_after !== null);
-
-  if (metadata.expected_end_balance === null && rowsWithBalance.length) {
+  if (metadata.expected_end_balance === null && rowsWithBalance.length)
     metadata.expected_end_balance = rowsWithBalance[rowsWithBalance.length - 1].balance_after;
-  }
   if (metadata.expected_start_balance === null && rowsWithBalance.length) {
     metadata.expected_start_balance = rowsWithBalance[0].balance_after;
-    if (rowsWithBalance[0].amount !== null) {
-      metadata.expected_start_balance = Number((rowsWithBalance[0].balance_after - rowsWithBalance[0].amount).toFixed(2));
-    }
+    if (rowsWithBalance[0].amount !== null)
+      metadata.expected_start_balance = Number(
+        (rowsWithBalance[0].balance_after - rowsWithBalance[0].amount).toFixed(2),
+      );
   }
-
-  if (metadata.expected_end_balance !== null && metadata.expected_start_balance === null) {
+  if (metadata.expected_end_balance !== null && metadata.expected_start_balance === null)
     metadata.expected_start_balance = Number((metadata.expected_end_balance - netChange).toFixed(2));
-  } else if (metadata.expected_start_balance !== null && metadata.expected_end_balance === null) {
+  else if (metadata.expected_start_balance !== null && metadata.expected_end_balance === null)
     metadata.expected_end_balance = Number((metadata.expected_start_balance + netChange).toFixed(2));
-  }
-
   return { metadata, rows };
 }
 
 async function loadExistingHashes(client, iban, minDate, maxDate) {
   const hashes = new Set();
   if (!iban || !minDate || !maxDate) return hashes;
-
   const { rows } = await client.query(
     `SELECT t.description, t.amount, t.occurred_on
      FROM transaction t
@@ -337,69 +317,50 @@ async function loadExistingHashes(client, iban, minDate, maxDate) {
        AND t.occurred_on BETWEEN $2 AND $3`,
     [iban, minDate, maxDate],
   );
-
-  for (const row of rows) {
+  for (const row of rows)
     hashes.add(computeTransactionHash(iban, row.occurred_on, Number(row.amount), row.description));
-  }
-
   return hashes;
 }
 
 function buildFallbackCategories(categories) {
   const byKind = new Map();
-  const preferences = {
-    income: ['Divers', 'Autres'],
-    expense: ['Divers', 'Autres'],
-    transfer: ['Divers'],
-  };
-
+  const preferences = { income: ['Divers', 'Autres'], expense: ['Divers', 'Autres'], transfer: ['Divers'] };
   for (const category of categories) {
     if (!byKind.has(category.kind)) byKind.set(category.kind, category);
     const preferredNames = preferences[category.kind] || [];
     if (preferredNames.includes(category.name)) byKind.set(category.kind, category);
   }
-
   return byKind;
 }
 
+// -----------------------------------------------------
+// 🚀 Route POST /excel : import principal
+// -----------------------------------------------------
 router.post('/excel', uploadSingle, async (req, res, next) => {
   try {
     const hasFile = Boolean(req.file);
-    if (ENABLE_UPLOAD && !hasFile) {
-      throw badRequest('Aucun fichier reçu.');
-    }
-    if (hasFile && !req.file.originalname.toLowerCase().endsWith('.xlsx')) {
+    if (ENABLE_UPLOAD && !hasFile) throw badRequest('Aucun fichier reçu.');
+    if (hasFile && !req.file.originalname.toLowerCase().endsWith('.xlsx'))
       throw badRequest('Format invalide : un fichier .xlsx est attendu.');
-    }
-
     const buffer = hasFile ? req.file.buffer : Buffer.alloc(0);
     const parsed = ENABLE_UPLOAD ? await parseExcelFile(buffer) : await parseStubFile();
-
     const fileHash = hasFile ? createHash('sha256').update(buffer).digest('hex') : null;
-
-    if (!parsed.rows.length) {
-      throw badRequest('Aucune opération détectée dans le fichier.');
-    }
+    if (!parsed.rows.length) throw badRequest('Aucune opération détectée dans le fichier.');
 
     const ibans = new Set();
-    for (const row of parsed.rows) {
-      if (row.iban) ibans.add(row.iban);
-    }
+    for (const row of parsed.rows) if (row.iban) ibans.add(row.iban);
     if (parsed.metadata.iban) ibans.add(parsed.metadata.iban);
-    if (!ibans.size) {
-      throw badRequest("Impossible de déterminer l'IBAN du compte associé.");
-    }
+    if (!ibans.size) throw badRequest("Impossible de déterminer l'IBAN du compte associé.");
 
-    // ----- MODE HORS-DB : on retourne un rapport sans rien écrire -----
+    // ----- MODE HORS-DB -----
     if (DISABLE_DB) {
       const importBatchId = __stubSeq++;
       const totalsParsed = parsed.rows.length;
-
       const report = {
         totals: { parsed: totalsParsed, created: totalsParsed },
         ignored: { duplicates: 0, missing_account: 0, invalid: 0 },
-        categories: [], // pas de règles appliquées sans DB
-        accounts: [],   // pas d’ID compte sans DB
+        categories: [],
+        accounts: [],
         balances: {
           expected: {
             start: parsed.metadata?.expected_start_balance ?? null,
@@ -408,7 +369,6 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           actual: { start: null, end: null },
         },
       };
-
       const stubBatch = {
         id: importBatchId,
         source: 'excel',
@@ -417,13 +377,8 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
         rows_count: totalsParsed,
         report,
       };
-
       __stubMemory.set(String(importBatchId), stubBatch);
-
-      return res.status(201).json({
-        import_batch_id: importBatchId,
-        report,
-      });
+      return res.status(201).json({ import_batch_id: importBatchId, report });
     }
 
     // ----- MODE AVEC DB -----
@@ -432,33 +387,30 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
         `INSERT INTO import_batch (source, original_filename, hash, status)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub'],
+        ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub', 'running'],
       );
       const importBatch = createdAt.rows[0];
-
       try {
         const accountRows = await client.query(
           'SELECT id, name, iban, currency_code FROM account WHERE iban = ANY($1)',
           [Array.from(ibans)],
         );
         const accountsByIban = new Map();
-        for (const account of accountRows.rows) {
+        for (const account of accountRows.rows)
           accountsByIban.set(normalizeIban(account.iban), account);
-        }
 
         const { rows: categoryRows } = await client.query('SELECT id, name, kind FROM category');
         const categoriesById = new Map(categoryRows.map((c) => [c.id, c]));
         const fallbackCategories = buildFallbackCategories(categoryRows);
-
         const { rows: ruleRows } = await client.query(
           `SELECT id, target_kind, category_id, keywords, priority
            FROM rule
            WHERE enabled = TRUE
            ORDER BY priority DESC, created_at ASC`,
         );
-        const rules = ruleRows.map((rule) => ({
-          ...rule,
-          keywords: (rule.keywords || []).map((kw) => normalizeLabel(kw)),
+        const rules = ruleRows.map((r) => ({
+          ...r,
+          keywords: (r.keywords || []).map((kw) => normalizeLabel(kw)),
         }));
 
         const hashesByAccount = new Map();
@@ -504,12 +456,10 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
             summary.ignored.missing_account += 1;
             continue;
           }
-
           if (!row.occurred_on || row.amount === null || !row.description) {
             summary.ignored.invalid += 1;
             continue;
           }
-
           const hash = computeTransactionHash(iban, row.occurred_on, row.amount, row.description);
           let accountHashes = hashesByAccount.get(iban);
           if (!accountHashes) {
@@ -572,7 +522,6 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           createdTransactions.push(transaction);
           seenHashes.add(hash);
           accountHashes.add(hash);
-
           summary.totals.created += 1;
 
           if (!summary.accounts.has(account.id)) {
@@ -613,9 +562,8 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           if (lastWithBalance.length) {
             const endBalance = Number(lastWithBalance[lastWithBalance.length - 1].balance_after);
             summary.balances.actual.end = Number.isFinite(endBalance) ? endBalance : null;
-            if (summary.balances.actual.end !== null) {
+            if (summary.balances.actual.end !== null)
               summary.balances.actual.start = Number((summary.balances.actual.end - net).toFixed(2));
-            }
           }
         }
 
@@ -644,10 +592,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       }
     });
 
-    res.status(201).json({
-      import_batch_id: result.importBatch.id,
-      report: result.report,
-    });
+    res.status(201).json({ import_batch_id: result.importBatch.id, report: result.report });
   } catch (error) {
     if (error?.code === '23505') {
       next(conflict('Ce fichier a déjà été importé.'));
@@ -657,26 +602,25 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
   }
 });
 
+// -----------------------------------------------------
+// 📄 Route GET /:id
+// -----------------------------------------------------
 router.get('/:id', async (req, res, next) => {
   try {
     if (DISABLE_DB) {
       const hit = __stubMemory.get(String(req.params.id));
-      if (!hit) {
-        throw notFound('Import introuvable (mode hors-DB)');
-      }
+      if (!hit) throw notFound('Import introuvable (mode hors-DB)');
       return res.json(hit);
     }
 
     const { rows } = await pool.query('SELECT * FROM import_batch WHERE id = $1', [req.params.id]);
-    if (!rows.length) {
-      throw notFound('Import introuvable');
-    }
+    if (!rows.length) throw notFound('Import introuvable');
     const batch = rows[0];
     let report = null;
     if (batch.message) {
       try {
         report = JSON.parse(batch.message);
-      } catch (error) {
+      } catch {
         report = null;
       }
     }
@@ -687,15 +631,16 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// -----------------------------------------------------
+// ✅ Route POST /:id/commit
+// -----------------------------------------------------
 router.post('/:id/commit', async (req, res, next) => {
   try {
     const { rowCount } = await pool.query(
       `UPDATE import_batch SET status = 'completed' WHERE id = $1`,
       [req.params.id],
     );
-    if (!rowCount) {
-      throw notFound('Import introuvable');
-    }
+    if (!rowCount) throw notFound('Import introuvable');
     res.status(204).send();
   } catch (error) {
     next(error);
