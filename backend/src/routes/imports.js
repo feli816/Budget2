@@ -19,10 +19,13 @@ let __stubSeq = 1;
 // Middleware d'upload no-op par défaut
 let uploadSingle = (req, res, next) => next();
 
+const UPLOAD_DIR = path.resolve(process.cwd(), 'uploads');
+
 if (ENABLE_UPLOAD) {
+  await fs.mkdir(UPLOAD_DIR, { recursive: true });
   const multer = (await import('multer')).default;
   const upload = multer({
-    storage: multer.memoryStorage(),
+    dest: UPLOAD_DIR,
     limits: {
       fileSize: 15 * 1024 * 1024,
     },
@@ -389,8 +392,10 @@ function buildFallbackCategories(categories) {
 }
 
 router.post('/excel', uploadSingle, async (req, res, next) => {
+  const hasFile = Boolean(req.file);
+  const uploadedFilePath = hasFile && req.file?.path ? req.file.path : null;
+
   try {
-    const hasFile = Boolean(req.file);
     if (ENABLE_UPLOAD && !hasFile) {
       throw badRequest('Aucun fichier reçu.');
     }
@@ -398,7 +403,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       throw badRequest('Format invalide : un fichier .xlsx est attendu.');
     }
 
-    const buffer = hasFile ? req.file.buffer : Buffer.alloc(0);
+    const buffer = hasFile && uploadedFilePath ? await fs.readFile(uploadedFilePath) : Buffer.alloc(0);
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const manualIbanInput = body.iban ?? body.IBAN ?? null;
     const startRowInput = body.start_row ?? body.startRow ?? null;
@@ -690,7 +695,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       }
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       import_batch_id: result.importBatch.id,
       report: result.report,
     });
@@ -700,6 +705,16 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       return;
     }
     next(mapDatabaseError(error));
+  } finally {
+    if (uploadedFilePath) {
+      try {
+        await fs.unlink(uploadedFilePath);
+      } catch (unlinkErr) {
+        if (unlinkErr?.code !== 'ENOENT') {
+          console.warn('Impossible de supprimer le fichier uploadé', unlinkErr);
+        }
+      }
+    }
   }
 });
 
