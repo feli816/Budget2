@@ -12,7 +12,9 @@ import projectsRouter from './routes/projects.js';
 import budgetsRouter from './routes/budgets.js';
 import importsRouter from './routes/imports.js';
 import { HttpError } from './errors.js';
+import healthRouter from './routes/health.js';
 
+// ✅ Fonction principale de création de l’application
 export function createApp() {
   const app = express();
 
@@ -20,10 +22,10 @@ export function createApp() {
   app.use(express.json());
   app.use(morgan('dev'));
 
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
-  });
+  // ✅ Route santé enrichie (avec variables d’environnement)
+  app.use('/health', healthRouter);
 
+  // ✅ Autres routes API
   app.use('/persons', personsRouter);
   app.use('/accounts', accountsRouter);
   app.use('/categories', categoriesRouter);
@@ -34,10 +36,12 @@ export function createApp() {
   app.use('/budgets', budgetsRouter);
   app.use('/imports', importsRouter);
 
+  // ✅ Gestion 404
   app.use((req, res, next) => {
     next(new HttpError(404, 'Not found'));
   });
 
+  // ✅ Gestion d’erreurs globales
   app.use((err, req, res, next) => {
     const status = err.status || 500;
     const payload = {
