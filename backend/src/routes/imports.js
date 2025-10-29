@@ -473,13 +473,19 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
 
     // ----- MODE AVEC DB -----
     const result = await withTransaction(async (client) => {
-      const createdAt = await client.query(
-        `INSERT INTO import_batch (source, original_filename, hash, status)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub', 'pending'],
-      );
+      const insertImportBatchQuery = {
+        text: `INSERT INTO import_batch (source, original_filename, hash, status)
+               VALUES ($1::text, $2::text, $3::text, $4::text)
+               RETURNING *`,
+        values: ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub', 'pending'],
+      };
+
+      const createdAt = await client.query(insertImportBatchQuery);
       const importBatch = createdAt.rows[0];
+
+      if (!importBatch?.id) {
+        throw new Error('Failed to create import batch.');
+      }
 
       try {
         const accountRows = await client.query(
