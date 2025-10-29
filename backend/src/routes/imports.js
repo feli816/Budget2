@@ -472,7 +472,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
         `INSERT INTO import_batch (source, original_filename, hash, status)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub'],
+        ['excel', req.file?.originalname ?? 'stub.json', fileHash ?? 'stub', 'pending'],
       );
       const importBatch = createdAt.rows[0];
 
@@ -609,6 +609,12 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           );
 
           const transaction = inserted.rows[0];
+          console.log('✅ Transaction inserted', {
+            accountId: account.id,
+            occurred_on: row.occurred_on,
+            amount: row.amount,
+            description: row.description,
+          });
           createdTransactions.push(transaction);
           seenHashes.add(hash);
           accountHashes.add(hash);
