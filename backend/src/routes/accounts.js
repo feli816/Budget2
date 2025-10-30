@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { pool } from '../db.js';
 import { HttpError, mapDatabaseError, notFound } from '../errors.js';
@@ -33,8 +32,8 @@ const ownerPersonIdSchema = z.preprocess(
 );
 
 const insertAccountQuery = [
-  'INSERT INTO account (id, name, iban, opening_balance, currency_code, owner_person_id)',
-  "VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))",
+  'INSERT INTO account (name, iban, opening_balance, currency_code, owner_person_id)',
+  "VALUES ($1, $2, $3, $4, NULLIF($5, ''))",
   'RETURNING *',
 ].join('\n');
 
@@ -55,9 +54,7 @@ const baseSchema = z.object({
   owner_person_id: ownerPersonIdSchema,
 });
 
-const createSchema = baseSchema.extend({
-  id: z.string().trim().min(1).optional(),
-});
+const createSchema = baseSchema;
 
 const updateSchema = baseSchema.partial().refine((value) => Object.keys(value).length > 0, {
   message: 'At least one field must be provided',
@@ -77,9 +74,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const payload = createSchema.parse(req.body);
-    const id = payload.id ?? randomUUID();
     const values = [
-      id,
       payload.name,
       payload.iban ?? null,
       payload.opening_balance ?? 0,
