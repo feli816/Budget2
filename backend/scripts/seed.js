@@ -27,15 +27,26 @@ async function loadSeed() {
 
 
 async function upsertPersons(client, persons = []) {
+  if (!persons.length) {
+    return;
+  }
+
   for (const person of persons) {
     await client.query(
       `INSERT INTO person (id, name, email)
        VALUES ($1, $2, $3)
        ON CONFLICT (id)
-       DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = NOW()`,
+       DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email`,
       [person.id, person.name, person.email ?? null]
     );
   }
+
+  await client.query(
+    `SELECT setval(
+       pg_get_serial_sequence('person', 'id'),
+       GREATEST((SELECT COALESCE(MAX(id), 0) FROM person), 0)
+     )`
+  );
 }
 
 async function upsertAccounts(client, accounts = [], defaultCurrency) {

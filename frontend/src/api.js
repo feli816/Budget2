@@ -30,10 +30,11 @@ function serializeAccountPayload(payload, { forUpdate = false } = {}) {
         body.owner_person_id = rawOwnerId;
       } else if (typeof rawOwnerId === 'string') {
         const trimmed = rawOwnerId.trim();
-        if (trimmed && /^-?\d+$/.test(trimmed)) {
-          body.owner_person_id = Number(trimmed);
-        } else if (trimmed) {
-          body.owner_person_id = trimmed;
+        if (trimmed) {
+          const numericValue = Number(trimmed);
+          if (!Number.isNaN(numericValue)) {
+            body.owner_person_id = numericValue;
+          }
         }
       } else {
         body.owner_person_id = rawOwnerId;

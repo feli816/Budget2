@@ -1,12 +1,19 @@
 BEGIN;
 
+CREATE TABLE IF NOT EXISTS person (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS account (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     iban TEXT UNIQUE,
     opening_balance NUMERIC(14, 2) NOT NULL DEFAULT 0,
     currency_code CHAR(3) NOT NULL,
-    owner_person_id TEXT,
+    owner_person_id INTEGER REFERENCES person(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
