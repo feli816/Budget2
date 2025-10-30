@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom'
+import {
+  Badge,
+  Card,
+  KeyVal,
+  Table,
+  formatDate,
+  formatAmount,
+} from './components/ui'
 import {
   getHealth,
   postImportExcelStub,
@@ -6,89 +15,8 @@ import {
   getImportReport,
   getAccounts,
   getCategories,
-  getTransactions,
-  getRules,
-  createRule,
-  updateRule,
-  deleteRule,
 } from './api'
-
-function Badge({ ok }) {
-  return (
-    <span className={`px-2 py-1 rounded text-sm ${ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-      {ok ? 'OK' : 'KO'}
-    </span>
-  )
-}
-
-function Card({ title, children, right }) {
-  return (
-    <section className="bg-white rounded-xl shadow p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">{title}</h2>
-        {right || null}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function KeyVal({ k, v }) {
-  return (
-    <div className="flex gap-2 text-sm">
-      <div className="w-40 text-gray-600">{k}</div>
-      <div className="font-medium">{v ?? '-'}</div>
-    </div>
-  )
-}
-
-function Table({ headers, rows, emptyLabel = 'Aucune donnée' }) {
-  return (
-    <div className="overflow-auto border rounded">
-      <table className="min-w-full text-sm">
-        <thead className="bg-gray-50">
-          <tr>
-            {headers.map((h, i) => (
-              <th key={i} className="text-left px-3 py-2 font-semibold text-gray-700">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td className="px-3 py-2 text-gray-500" colSpan={headers.length}>{emptyLabel}</td></tr>
-          ) : rows.map((r, i) => (
-            <tr key={i} className="border-t">
-              {r.map((c, j) => (<td key={j} className="px-3 py-2">{c}</td>))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function formatDate(value) {
-  if (!value) return '-'
-  try {
-    return new Intl.DateTimeFormat('fr-CH', { dateStyle: 'medium' }).format(new Date(value))
-  } catch (e) {
-    return String(value)
-  }
-}
-
-function formatAmount(amount, currency = 'CHF') {
-  if (typeof amount !== 'number' || Number.isNaN(amount)) return '-'
-  try {
-    return new Intl.NumberFormat('fr-CH', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  } catch (e) {
-    return `${amount.toFixed(2)} ${currency}`
-  }
-}
+import GlobalReportView from './views/GlobalReportView'
 
 const categoryKindLabels = {
   income: 'Revenus',
@@ -194,7 +122,7 @@ function ImportReportView({ report }) {
   )
 }
 
-export default function App() {
+function ImportsDashboard() {
   const [health, setHealth] = useState(null)
   const [importErr, setImportErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -214,7 +142,6 @@ export default function App() {
   const [transactionsMetaErr, setTransactionsMetaErr] = useState('')
   const [transactionsBusy, setTransactionsBusy] = useState(false)
   const [filters, setFilters] = useState({ accountId: '', categoryId: '', limit: '50' })
-  const [activeTab, setActiveTab] = useState('dashboard')
 
   useEffect(() => {
     getHealth().then(setHealth).catch(e => setImportErr(e.message))
@@ -303,91 +230,136 @@ export default function App() {
   }, [transactions])
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
-        <h1 className="text-2xl font-bold">Budget — Frontend (Lot 6)</h1>
+    <div className="space-y-6">
+      <Card title="Santé backend" right={<Badge ok={health?.status === 'ok'} />}>
+        <pre className="text-sm bg-gray-100 p-3 rounded overflow-auto">
+          {JSON.stringify(health, null, 2)}
+        </pre>
+      </Card>
 
-        <Card title="Santé backend" right={<Badge ok={health?.status === 'ok'} />}>
-          <pre className="text-sm bg-gray-100 p-3 rounded overflow-auto">
-            {JSON.stringify(health, null, 2)}
-          </pre>
-        </Card>
-
-        <Card
-          title="Import Excel"
-          right={
-            <span className="text-sm px-2 py-1 rounded bg-indigo-50 text-indigo-700">
-              {uploadEnabled
-                ? 'Upload réel activé'
-                : 'Mode stub (pas de fichier requis)'}
-            </span>
-          }
-        >
-          <div className="space-y-3">
-            {uploadEnabled && (
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Fichier Excel
-                </label>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={e => setFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-                />
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={handleCreateImport}
-                disabled={busy || (uploadEnabled && !file)}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                Créer un import (POST /imports/excel)
-              </button>
-
+      <Card
+        title="Import Excel"
+        right={
+          <span className="text-sm px-2 py-1 rounded bg-indigo-50 text-indigo-700">
+            {uploadEnabled
+              ? 'Upload réel activé'
+              : 'Mode stub (pas de fichier requis)'}
+          </span>
+        }
+      >
+        <div className="space-y-3">
+          {uploadEnabled && (
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Fichier Excel
+              </label>
               <input
-                type="text"
-                className="border rounded px-3 py-2 w-56"
-                placeholder="IBAN du compte"
-                value={manualIban}
-                onChange={e => setManualIban(e.target.value)}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={e => setFile(e.target.files?.[0] || null)}
+                className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
               />
-
-              <input
-                type="number"
-                min="1"
-                className="border rounded px-3 py-2 w-40"
-                placeholder="Ligne de début"
-                value={manualStartRow}
-                onChange={e => setManualStartRow(e.target.value)}
-              />
-
-              <input
-                className="border rounded px-3 py-2 w-48"
-                placeholder="import_batch_id"
-                value={batchId}
-                onChange={e => setBatchId(e.target.value)}
-              />
-
-              <button
-                onClick={handleFetchReport}
-                disabled={busy || !batchId}
-                className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-              >
-                Récupérer le rapport (GET /imports/:id)
-              </button>
             </div>
+          )}
 
-            {importErr && <p className="text-sm text-red-600">Erreur : {importErr}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleCreateImport}
+              disabled={busy || (uploadEnabled && !file)}
+              className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              Créer un import (POST /imports/excel)
+            </button>
+
+            <input
+              type="text"
+              className="border rounded px-3 py-2 w-56"
+              placeholder="IBAN du compte"
+              value={manualIban}
+              onChange={e => setManualIban(e.target.value)}
+            />
+
+            <input
+              type="number"
+              min="1"
+              className="border rounded px-3 py-2 w-40"
+              placeholder="Ligne de début"
+              value={manualStartRow}
+              onChange={e => setManualStartRow(e.target.value)}
+            />
+
+            <input
+              className="border rounded px-3 py-2 w-48"
+              placeholder="import_batch_id"
+              value={batchId}
+              onChange={e => setBatchId(e.target.value)}
+            />
+
+            <button
+              onClick={handleFetchReport}
+              disabled={busy || !batchId}
+              className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Récupérer le rapport (GET /imports/:id)
+            </button>
           </div>
-        </Card>
 
-        {report && (
-          <ImportReportView report={report} />
-        )}
-      </div>
+          {importErr && <p className="text-sm text-red-600">Erreur : {importErr}</p>}
+        </div>
+      </Card>
+
+      {report && (
+        <ImportReportView report={report} />
+      )}
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Router>
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="max-w-5xl mx-auto p-6 space-y-6">
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">Budget — Frontend (Lot 6)</h1>
+              <p className="text-sm text-gray-600">Interface de démonstration</p>
+            </div>
+            <nav className="flex gap-2">
+              <NavLink
+                to="/"
+                end
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-blue-600 border border-blue-100 hover:bg-blue-50'
+                  }`
+                }
+              >
+                Imports
+              </NavLink>
+              <NavLink
+                to="/imports/summary"
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-blue-600 border border-blue-100 hover:bg-blue-50'
+                  }`
+                }
+              >
+                Résumé global
+              </NavLink>
+            </nav>
+          </header>
+
+          <Routes>
+            <Route path="/" element={<ImportsDashboard />} />
+            <Route path="/imports/summary" element={<GlobalReportView />} />
+          </Routes>
+        </div>
+      </div>
+    </Router>
   )
 }
