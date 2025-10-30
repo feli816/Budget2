@@ -32,6 +32,12 @@ const ownerPersonIdSchema = z.preprocess(
   z.string().trim().min(1).nullable().optional(),
 );
 
+const insertAccountQuery = [
+  'INSERT INTO account (id, name, iban, opening_balance, currency_code, owner_person_id)',
+  "VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))",
+  'RETURNING *',
+].join('\n');
+
 const baseSchema = z.object({
   name: z.string().trim().min(1),
   iban: z
@@ -80,12 +86,7 @@ router.post('/', async (req, res, next) => {
       payload.currency_code ?? 'CHF',
       payload.owner_person_id ?? null,
     ];
-    const { rows } = await pool.query(
-      `INSERT INTO account (id, name, iban, opening_balance, currency_code, owner_person_id)
-       VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
-       RETURNING *`,
-      values,
-    );
+    const { rows } = await pool.query(insertAccountQuery, values);
     res.status(201).json(rows[0]);
   } catch (error) {
     next(mapDatabaseError(error));
