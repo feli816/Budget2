@@ -76,9 +76,22 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
       return
     }
 
+    const trimmedIban = form.iban.trim()
+    if (!trimmedIban) {
+      setError("L'IBAN est obligatoire.")
+      return
+    }
+
+    const normalizedCurrency = normalizeCurrency(form.currency_code)
+    if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+      setError('La devise doit être un code ISO à 3 lettres.')
+      return
+    }
+
     const payload = {
       name: trimmedName,
-      currency_code: normalizeCurrency(form.currency_code),
+      iban: trimmedIban,
+      currency_code: normalizedCurrency,
     }
 
     const includeOpeningBalance = !initialAccount || form.opening_balance !== ''
@@ -91,13 +104,6 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
         return
       }
       payload.opening_balance = openingBalance
-    }
-
-    const iban = form.iban.trim()
-    if (iban) {
-      payload.iban = iban
-    } else {
-      payload.iban = null
     }
 
     const ownerId = form.owner_person_id.trim()
@@ -125,17 +131,19 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
             onChange={event => updateField('name', event.target.value)}
             className="border rounded px-3 py-2"
             placeholder="Compte courant"
+            required
           />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-gray-600">IBAN (optionnel)</span>
+          <span className="text-gray-600">IBAN</span>
           <input
             type="text"
             value={form.iban}
             onChange={event => updateField('iban', event.target.value)}
             className="border rounded px-3 py-2"
             placeholder="CH00 0000 0000 0000"
+            required
           />
         </label>
 
@@ -147,6 +155,7 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
             onChange={event => updateField('currency_code', event.target.value)}
             className="border rounded px-3 py-2 uppercase"
             maxLength={3}
+            required
           />
         </label>
 

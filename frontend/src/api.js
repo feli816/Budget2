@@ -1,5 +1,35 @@
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '');
 
+function serializeAccountPayload(payload, { forUpdate = false } = {}) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Account payload must be an object');
+  }
+
+  const body = {
+    name: payload.name,
+    iban: payload.iban,
+    currency_code: payload.currency_code,
+  };
+
+  ['name', 'iban', 'currency_code'].forEach((field) => {
+    if (body[field] === undefined) {
+      throw new Error(`Account payload must include ${field}`);
+    }
+  });
+
+  if ('opening_balance' in payload) {
+    body.opening_balance = payload.opening_balance;
+  } else if (!forUpdate) {
+    body.opening_balance = 0;
+  }
+
+  if ('owner_person_id' in payload) {
+    body.owner_person_id = payload.owner_person_id;
+  }
+
+  return body;
+}
+
 async function jsonOrThrow(res, label) {
   let data = null;
   try {
@@ -69,19 +99,21 @@ export async function getAccounts() {
 }
 
 export async function createAccount(payload) {
+  const body = serializeAccountPayload(payload);
   const res = await fetch(`${API_URL}/accounts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   return jsonOrThrow(res, 'POST /accounts failed');
 }
 
 export async function updateAccount(id, payload) {
+  const body = serializeAccountPayload(payload, { forUpdate: true });
   const res = await fetch(`${API_URL}/accounts/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   return jsonOrThrow(res, `PUT /accounts/${id} failed`);
 }
