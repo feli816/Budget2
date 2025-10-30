@@ -724,6 +724,84 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
   }
 });
 
+function toNumberOrZero(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function toNumberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeReport(rawReport) {
+  const baseReport = {
+    totals: { parsed: 0, created: 0 },
+    ignored: { duplicates: 0, invalid: 0 },
+    accounts: [],
+    categories: [],
+    balances: {
+      expected: { start: null, end: null },
+      actual: { start: null, end: null },
+    },
+  };
+
+  if (!rawReport || typeof rawReport !== 'object') {
+    return baseReport;
+  }
+
+  const totalsSource = rawReport.totals && typeof rawReport.totals === 'object' ? rawReport.totals : {};
+  const ignoredSource = rawReport.ignored && typeof rawReport.ignored === 'object' ? rawReport.ignored : {};
+  const balancesSource = rawReport.balances && typeof rawReport.balances === 'object' ? rawReport.balances : {};
+
+  const accounts = Array.isArray(rawReport.accounts)
+    ? rawReport.accounts.map((account) => ({
+        name: typeof account?.name === 'string' ? account.name : '',
+        iban:
+          account?.iban === null || account?.iban === undefined
+            ? null
+            : String(account.iban),
+        created: Boolean(account?.created),
+      }))
+    : [];
+
+  const categories = Array.isArray(rawReport.categories)
+    ? rawReport.categories.map((category) => ({
+        name: typeof category?.name === 'string' ? category.name : '',
+        kind: typeof category?.kind === 'string' ? category.kind : null,
+        count: toNumberOrZero(category?.count),
+      }))
+    : [];
+
+  const expectedSource = balancesSource.expected && typeof balancesSource.expected === 'object'
+    ? balancesSource.expected
+    : {};
+  const actualSource = balancesSource.actual && typeof balancesSource.actual === 'object' ? balancesSource.actual : {};
+
+  return {
+    totals: {
+      parsed: toNumberOrZero(totalsSource.parsed),
+      created: toNumberOrZero(totalsSource.created),
+    },
+    ignored: {
+      duplicates: toNumberOrZero(ignoredSource.duplicates),
+      invalid: toNumberOrZero(ignoredSource.invalid),
+    },
+    accounts,
+    categories,
+    balances: {
+      expected: {
+        start: toNumberOrNull(expectedSource.start),
+        end: toNumberOrNull(expectedSource.end),
+      },
+      actual: {
+        start: toNumberOrNull(actualSource.start),
+        end: toNumberOrNull(actualSource.end),
+      },
+    },
+  };
+}
+
 router.get('/:id', async (req, res, next) => {
   try {
     if (DISABLE_DB) {
@@ -731,7 +809,10 @@ router.get('/:id', async (req, res, next) => {
       if (!hit) {
         throw notFound('Import introuvable (mode hors-DB)');
       }
-      return res.json(hit);
+      return res.json({
+        import_batch_id: hit.id ?? Number(req.params.id),
+        report: normalizeReport(hit.report ?? hit.message ?? hit),
+      });
     }
 
     const { rows } = await pool.query('SELECT * FROM import_batch WHERE id = $1', [req.params.id]);
@@ -739,16 +820,22 @@ router.get('/:id', async (req, res, next) => {
       throw notFound('Import introuvable');
     }
     const batch = rows[0];
-    let report = null;
+    let parsedMessage = null;
     if (batch.message) {
       try {
-        report = JSON.parse(batch.message);
+        parsedMessage = JSON.parse(batch.message);
       } catch (error) {
-        report = null;
+        parsedMessage = null;
       }
     }
 
-    res.json({ ...batch, report });
+    const rawReport = parsedMessage?.report ?? parsedMessage;
+    const report = normalizeReport(rawReport);
+
+    res.json({
+      import_batch_id: batch.id,
+      report,
+    });
   } catch (error) {
     next(error);
   }
