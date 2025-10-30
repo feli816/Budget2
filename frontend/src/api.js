@@ -134,3 +134,20 @@ export async function deleteRule(id) {
     throw new Error(msg);
   }
 }
+
+export async function reorderRules(items) {
+  const payload = {
+    items: Array.isArray(items)
+      ? items.map(item => ({
+          id: item.id,
+          priority: item.priority,
+        }))
+      : [],
+  };
+  const res = await fetch(`${API_URL}/rules/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res, 'POST /rules/reorder failed');
+}
