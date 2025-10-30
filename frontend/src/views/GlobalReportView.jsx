@@ -89,7 +89,18 @@ export default function GlobalReportView() {
 
   return (
     <div className="space-y-6">
-      <Card title="Résumé global des imports">
+      <Card
+        title="Résumé global des imports"
+        right={(
+          <button
+            type="button"
+            onClick={() => window.open('http://localhost:3000/imports/summary/export', '_blank')}
+            className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Exporter (.xlsx)
+          </button>
+        )}
+      >
         {loading ? (
           <p className="text-sm text-gray-600">Chargement du résumé...</p>
         ) : error ? (
