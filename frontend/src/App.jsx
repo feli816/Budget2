@@ -96,6 +96,104 @@ const categoryKindLabels = {
   transfer: 'Transferts',
 }
 
+function ImportReportView({ report }) {
+  if (!report) return null
+
+  const details = report.report || {}
+  const totals = details.totals || {}
+  const ignored = details.ignored || {}
+  const accounts = Array.isArray(details.accounts) ? details.accounts : []
+  const categories = Array.isArray(details.categories) ? details.categories : []
+  const balances = details.balances || {}
+  const expectedBalances = balances.expected || {}
+  const actualBalances = balances.actual || {}
+
+  const accountsRows = accounts.map(account => [
+    <div key={`name-${account.id || account.iban || account.name}`} className="font-medium">
+      {account.name || account.id || '-'}
+      {account.iban ? (
+        <div className="text-xs text-gray-500">{account.iban}</div>
+      ) : null}
+    </div>,
+    <span key={`created-${account.id || account.iban || account.name}`}>{account.created ?? '-'}</span>,
+  ])
+
+  const categoriesRows = categories.map(category => [
+    <div key={`cat-${category.id || category.name}`} className="font-medium">
+      {category.name || category.id || '-'}
+    </div>,
+    <span key={`kind-${category.id || category.name}`} className="uppercase tracking-wide text-xs text-gray-600">
+      {categoryKindLabels[category.kind] || category.kind || '-'}
+    </span>,
+    <span key={`count-${category.id || category.name}`}>{category.count ?? '-'}</span>,
+  ])
+
+  return (
+    <div className="space-y-4">
+      <Card
+        title={`Rapport import #${report.id ?? '?'}`}
+        right={<Badge ok={(report.status || '').toLowerCase() === 'completed'} />}
+      >
+        <div className="space-y-2">
+          <KeyVal k="Statut" v={report.status || '-'} />
+          <KeyVal k="Source" v={report.source || '-'} />
+          <KeyVal k="Fichier original" v={report.original_filename || '-'} />
+          <KeyVal k="Lignes importées" v={report.rows_count ?? '-'} />
+        </div>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card title="Totals">
+          <div className="space-y-2">
+            <KeyVal k="Transactions analysées" v={totals.parsed ?? '-'} />
+            <KeyVal k="Transactions créées" v={totals.created ?? '-'} />
+            <KeyVal k="Transactions ignorées" v={totals.ignored ?? '-'} />
+          </div>
+        </Card>
+
+        <Card title="Ignorés">
+          <div className="space-y-2">
+            <KeyVal k="Doublons" v={ignored.duplicates ?? '-'} />
+            <KeyVal k="Compte introuvable" v={ignored.missing_account ?? '-'} />
+            <KeyVal k="Invalides" v={ignored.invalid ?? '-'} />
+          </div>
+        </Card>
+      </div>
+
+      <Card title="Comptes">
+        <Table
+          headers={["Compte", "Transactions créées"]}
+          rows={accountsRows}
+          emptyLabel="Aucun compte impacté"
+        />
+      </Card>
+
+      <Card title="Catégories">
+        <Table
+          headers={["Catégorie", "Type", "Transactions"]}
+          rows={categoriesRows}
+          emptyLabel="Aucune catégorie utilisée"
+        />
+      </Card>
+
+      <Card title="Balances">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-600">Attendu</h3>
+            <KeyVal k="Solde initial" v={formatAmount(expectedBalances.start)} />
+            <KeyVal k="Solde final" v={formatAmount(expectedBalances.end)} />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-600">Réel</h3>
+            <KeyVal k="Solde initial" v={formatAmount(actualBalances.start)} />
+            <KeyVal k="Solde final" v={formatAmount(actualBalances.end)} />
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 export default function App() {
   const [health, setHealth] = useState(null)
   const [importErr, setImportErr] = useState('')
@@ -285,6 +383,10 @@ export default function App() {
             {importErr && <p className="text-sm text-red-600">Erreur : {importErr}</p>}
           </div>
         </Card>
+
+        {report && (
+          <ImportReportView report={report} />
+        )}
       </div>
     </div>
   )
