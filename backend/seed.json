@@ -1,12 +1,12 @@
 ﻿{
   "currency": "CHF",
   "persons": [
-    { "id": "p1", "name": "Personne A" },
-    { "id": "p2", "name": "Personne B" }
+    { "id": 1, "name": "Personne A" },
+    { "id": 2, "name": "Personne B" }
   ],
   "accounts": [
-    { "id": "a1", "name": "Compte A", "iban": "CH00 AAAAA AAAAA AAAAAA", "opening_balance": 0, "owner_person_id": "p1" },
-    { "id": "a2", "name": "Compte B", "iban": "CH00 BBBBB BBBBB BBBBBB", "opening_balance": 0, "owner_person_id": "p2" }
+    { "id": "a1", "name": "Compte A", "iban": "CH00 AAAAA AAAAA AAAAAA", "opening_balance": 0, "owner_person_id": 1 },
+    { "id": "a2", "name": "Compte B", "iban": "CH00 BBBBB BBBBB BBBBBB", "opening_balance": 0, "owner_person_id": 2 }
   ],
   "categories": {
     "income": [ "Salaire", "Allocations", "Loyers", "Titres", "Autres" ],

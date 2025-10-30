@@ -111,7 +111,8 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
       if (/^-?\d+$/.test(ownerId)) {
         payload.owner_person_id = Number(ownerId)
       } else {
-        payload.owner_person_id = ownerId
+        setError('Le propriétaire doit être un identifiant numérique.')
+        return
       }
     }
 

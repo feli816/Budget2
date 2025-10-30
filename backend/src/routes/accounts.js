@@ -7,30 +7,6 @@ const router = Router();
 
 const currencyRegex = /^[A-Z]{3}$/;
 
-const ownerPersonIdSchema = z.preprocess(
-  (value) => {
-    if (value === undefined) {
-      return undefined;
-    }
-
-    if (value === null) {
-      return null;
-    }
-
-    if (typeof value === 'number') {
-      return String(value);
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      return trimmed === '' ? null : trimmed;
-    }
-
-    return value;
-  },
-  z.string().trim().min(1).nullable().optional(),
-);
-
 const insertAccountQuery = [
   'INSERT INTO account (name, iban, opening_balance, currency_code, owner_person_id)',
   "VALUES ($1, $2, $3, $4, NULLIF($5, ''))",
@@ -51,7 +27,7 @@ const baseSchema = z.object({
     .trim()
     .regex(currencyRegex, 'Currency must be a 3-letter ISO code')
     .default('CHF'),
-  owner_person_id: ownerPersonIdSchema,
+  owner_person_id: z.coerce.number().int().nullable().optional(),
 });
 
 const createSchema = baseSchema;
@@ -63,7 +39,7 @@ const updateSchema = baseSchema.partial().refine((value) => Object.keys(value).l
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, iban, currency_code FROM account ORDER BY name ASC',
+      'SELECT id, name, iban, currency_code, owner_person_id FROM account ORDER BY name ASC',
     );
     res.json(rows);
   } catch (error) {
