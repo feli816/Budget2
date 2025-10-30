@@ -68,6 +68,42 @@ export async function getAccounts() {
   return jsonOrThrow(res, 'GET /accounts failed');
 }
 
+export async function createAccount(payload) {
+  const res = await fetch(`${API_URL}/accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res, 'POST /accounts failed');
+}
+
+export async function updateAccount(id, payload) {
+  const res = await fetch(`${API_URL}/accounts/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res, `PUT /accounts/${id} failed`);
+}
+
+export async function deleteAccount(id) {
+  const res = await fetch(`${API_URL}/accounts/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (error) {
+      // ignore body parse errors
+    }
+    const msg =
+      (data && (data.error || data.message)) ||
+      `DELETE /accounts/${id} failed: ${res.status} ${res.statusText}`;
+    throw new Error(msg);
+  }
+}
+
 export async function getCategories(params = {}) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
