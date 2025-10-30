@@ -832,7 +832,7 @@ router.get('/:id', async (req, res, next) => {
     const rawReport = parsedMessage?.report ?? parsedMessage;
     const report = normalizeReport(rawReport);
 
-    res.json({
+    return res.json({
       import_batch_id: batch.id,
       report,
     });
