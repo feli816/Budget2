@@ -24,7 +24,21 @@ function serializeAccountPayload(payload, { forUpdate = false } = {}) {
   }
 
   if ('owner_person_id' in payload) {
-    body.owner_person_id = payload.owner_person_id;
+    const rawOwnerId = payload.owner_person_id;
+    if (rawOwnerId !== '' && rawOwnerId !== null && rawOwnerId !== undefined) {
+      if (typeof rawOwnerId === 'number') {
+        body.owner_person_id = rawOwnerId;
+      } else if (typeof rawOwnerId === 'string') {
+        const trimmed = rawOwnerId.trim();
+        if (trimmed && /^-?\d+$/.test(trimmed)) {
+          body.owner_person_id = Number(trimmed);
+        } else if (trimmed) {
+          body.owner_person_id = trimmed;
+        }
+      } else {
+        body.owner_person_id = rawOwnerId;
+      }
+    }
   }
 
   return body;

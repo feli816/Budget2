@@ -108,9 +108,11 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
 
     const ownerId = form.owner_person_id.trim()
     if (ownerId) {
-      payload.owner_person_id = ownerId
-    } else {
-      payload.owner_person_id = null
+      if (/^-?\d+$/.test(ownerId)) {
+        payload.owner_person_id = Number(ownerId)
+      } else {
+        payload.owner_person_id = ownerId
+      }
     }
 
     try {
@@ -177,7 +179,6 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
             value={form.owner_person_id}
             onChange={event => updateField('owner_person_id', event.target.value)}
             className="border rounded px-3 py-2"
-            placeholder="p1"
           />
         </label>
       </div>
