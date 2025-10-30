@@ -441,7 +441,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       const totalsParsed = parsed.rows.length;
 
       const report = {
-        totals: { parsed: totalsParsed, created: totalsParsed },
+        totals: { parsed: totalsParsed, created: totalsParsed, ignored: 0 },
         ignored: { duplicates: 0, missing_account: 0, invalid: 0 },
         categories: [], // pas de règles appliquées sans DB
         accounts: [],   // pas d’ID compte sans DB
@@ -736,8 +736,8 @@ function toNumberOrNull(value) {
 
 function normalizeReport(rawReport) {
   const baseReport = {
-    totals: { parsed: 0, created: 0 },
-    ignored: { duplicates: 0, invalid: 0 },
+    totals: { parsed: 0, created: 0, ignored: 0 },
+    ignored: { duplicates: 0, missing_account: 0, invalid: 0 },
     accounts: [],
     categories: [],
     balances: {
@@ -756,17 +756,25 @@ function normalizeReport(rawReport) {
 
   const accounts = Array.isArray(rawReport.accounts)
     ? rawReport.accounts.map((account) => ({
+        id:
+          account?.id === null || account?.id === undefined
+            ? null
+            : String(account.id),
         name: typeof account?.name === 'string' ? account.name : '',
         iban:
           account?.iban === null || account?.iban === undefined
             ? null
             : String(account.iban),
-        created: Boolean(account?.created),
+        created: toNumberOrZero(account?.created),
       }))
     : [];
 
   const categories = Array.isArray(rawReport.categories)
     ? rawReport.categories.map((category) => ({
+        id:
+          category?.id === null || category?.id === undefined
+            ? null
+            : Number(category.id),
         name: typeof category?.name === 'string' ? category.name : '',
         kind: typeof category?.kind === 'string' ? category.kind : null,
         count: toNumberOrZero(category?.count),
@@ -782,9 +790,11 @@ function normalizeReport(rawReport) {
     totals: {
       parsed: toNumberOrZero(totalsSource.parsed),
       created: toNumberOrZero(totalsSource.created),
+      ignored: toNumberOrZero(totalsSource.ignored),
     },
     ignored: {
       duplicates: toNumberOrZero(ignoredSource.duplicates),
+      missing_account: toNumberOrZero(ignoredSource.missing_account),
       invalid: toNumberOrZero(ignoredSource.invalid),
     },
     accounts,
@@ -830,7 +840,133 @@ router.get('/:id', async (req, res, next) => {
     }
 
     const rawReport = parsedMessage?.report ?? parsedMessage;
-    const report = normalizeReport(rawReport);
+    const baseReport = normalizeReport(rawReport);
+
+    const parsedTotal = Number.isFinite(Number(batch.rows_count))
+      ? Number(batch.rows_count)
+      : baseReport.totals.parsed;
+
+    const { rows: transactionRows } = await pool.query(
+      `SELECT t.id, t.account_id, t.amount, t.balance_after, t.occurred_on,
+              a.name AS account_name, a.iban AS account_iban,
+              c.id AS category_id, c.name AS category_name, c.kind AS category_kind
+         FROM transaction t
+         LEFT JOIN account a ON a.id = t.account_id
+         LEFT JOIN category c ON c.id = t.category_id
+        WHERE t.import_batch_id = $1
+        ORDER BY t.occurred_on ASC, t.id ASC`,
+      [batch.id],
+    );
+
+    const createdTotal = transactionRows.length;
+    const totalsIgnored = Math.max(parsedTotal - createdTotal, 0);
+
+    const ignoredDetails = { ...baseReport.ignored };
+    let ignoredSum =
+      ignoredDetails.duplicates + ignoredDetails.missing_account + ignoredDetails.invalid;
+    if (!ignoredSum && totalsIgnored > 0) {
+      ignoredDetails.duplicates = totalsIgnored;
+      ignoredSum = totalsIgnored;
+    }
+    if (ignoredSum !== totalsIgnored) {
+      const diff = totalsIgnored - ignoredSum;
+      if (diff > 0) {
+        ignoredDetails.duplicates += diff;
+      } else if (diff < 0) {
+        let remaining = -diff;
+        const reduceDuplicates = Math.min(ignoredDetails.duplicates, remaining);
+        ignoredDetails.duplicates -= reduceDuplicates;
+        remaining -= reduceDuplicates;
+        if (remaining > 0) {
+          const reduceMissing = Math.min(ignoredDetails.missing_account, remaining);
+          ignoredDetails.missing_account -= reduceMissing;
+          remaining -= reduceMissing;
+        }
+        if (remaining > 0) {
+          const reduceInvalid = Math.min(ignoredDetails.invalid, remaining);
+          ignoredDetails.invalid -= reduceInvalid;
+        }
+      }
+    }
+
+    const accountsMap = new Map();
+    for (const row of transactionRows) {
+      const accountId = row.account_id ? String(row.account_id) : null;
+      if (!accountsMap.has(accountId)) {
+        accountsMap.set(accountId, {
+          id: accountId,
+          name: row.account_name ?? '',
+          iban: row.account_iban ?? null,
+          created: 0,
+        });
+      }
+      accountsMap.get(accountId).created += 1;
+    }
+    const accounts = Array.from(accountsMap.values()).sort((a, b) => {
+      const nameA = a.name || '';
+      const nameB = b.name || '';
+      return nameA.localeCompare(nameB);
+    });
+
+    const categoriesMap = new Map();
+    for (const row of transactionRows) {
+      if (!row.category_id) continue;
+      const categoryId = Number(row.category_id);
+      if (!categoriesMap.has(categoryId)) {
+        categoriesMap.set(categoryId, {
+          id: categoryId,
+          name: row.category_name ?? '',
+          kind: row.category_kind ?? null,
+          count: 0,
+        });
+      }
+      categoriesMap.get(categoryId).count += 1;
+    }
+    const categories = Array.from(categoriesMap.values()).sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    const netAmount = transactionRows.reduce((acc, trx) => {
+      const amount = Number(trx.amount);
+      return Number.isFinite(amount) ? acc + amount : acc;
+    }, 0);
+
+    let actualEnd = null;
+    const transactionsWithBalance = transactionRows.filter(
+      (trx) => trx.balance_after !== null && trx.balance_after !== undefined,
+    );
+    if (transactionsWithBalance.length) {
+      const last = transactionsWithBalance[transactionsWithBalance.length - 1];
+      const end = Number(last.balance_after);
+      if (Number.isFinite(end)) {
+        actualEnd = end;
+      }
+    }
+
+    let actualStart = null;
+    if (actualEnd !== null) {
+      const startCandidate = Number((actualEnd - netAmount).toFixed(2));
+      if (Number.isFinite(startCandidate)) {
+        actualStart = startCandidate;
+      }
+    }
+
+    const balances = {
+      expected: baseReport.balances.expected,
+      actual: {
+        start: actualStart ?? baseReport.balances.actual.start,
+        end: actualEnd ?? baseReport.balances.actual.end,
+      },
+    };
+
+    const report = {
+      totals: { parsed: parsedTotal, created: createdTotal, ignored: totalsIgnored },
+      ignored: ignoredDetails,
+      accounts,
+      categories,
+      balances,
+    };
 
     return res.json({
       import_batch_id: batch.id,
