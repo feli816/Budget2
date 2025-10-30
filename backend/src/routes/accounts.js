@@ -8,6 +8,30 @@ const router = Router();
 
 const currencyRegex = /^[A-Z]{3}$/;
 
+const ownerPersonIdSchema = z.preprocess(
+  (value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null) {
+      return null;
+    }
+
+    if (typeof value === 'number') {
+      return String(value);
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed === '' ? null : trimmed;
+    }
+
+    return value;
+  },
+  z.string().trim().min(1).nullable().optional(),
+);
+
 const baseSchema = z.object({
   name: z.string().trim().min(1),
   iban: z
@@ -16,13 +40,13 @@ const baseSchema = z.object({
     .min(5)
     .optional()
     .nullable(),
-  opening_balance: z.number().finite().default(0),
+  opening_balance: z.coerce.number().finite().default(0),
   currency_code: z
     .string()
     .trim()
     .regex(currencyRegex, 'Currency must be a 3-letter ISO code')
     .default('CHF'),
-  owner_person_id: z.string().trim().min(1).nullable().optional(),
+  owner_person_id: ownerPersonIdSchema,
 });
 
 const createSchema = baseSchema.extend({
@@ -52,13 +76,13 @@ router.post('/', async (req, res, next) => {
       id,
       payload.name,
       payload.iban ?? null,
-      payload.opening_balance,
+      payload.opening_balance ?? 0,
       payload.currency_code ?? 'CHF',
       payload.owner_person_id ?? null,
     ];
     const { rows } = await pool.query(
       `INSERT INTO account (id, name, iban, opening_balance, currency_code, owner_person_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
        RETURNING *`,
       values,
     );
