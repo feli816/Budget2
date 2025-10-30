@@ -54,6 +54,15 @@ export async function getImportReport(id) {
   return jsonOrThrow(res, `GET /imports/${id} failed`);
 }
 
+export async function getImportSummary() {
+  const res = await fetch(`${API_URL}/imports/summary`);
+  const data = await jsonOrThrow(res, 'GET /imports/summary failed');
+  if (data && typeof data === 'object' && 'summary' in data) {
+    return data.summary;
+  }
+  return data;
+}
+
 export async function getAccounts() {
   const res = await fetch(`${API_URL}/accounts`);
   return jsonOrThrow(res, 'GET /accounts failed');
