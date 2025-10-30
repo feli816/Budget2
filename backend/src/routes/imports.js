@@ -2,6 +2,7 @@ import { Router } from 'express';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'crypto';
+import ExcelJS from 'exceljs';
 
 import { pool, withTransaction } from '../db.js';
 import { HttpError, badRequest, conflict, mapDatabaseError, notFound } from '../errors.js';
@@ -812,107 +813,150 @@ function normalizeReport(rawReport) {
   };
 }
 
-router.get('/summary', async (req, res, next) => {
+async function getGlobalImportSummary() {
+  if (DISABLE_DB) {
+    return {
+      imports_count: 0,
+      transactions_total: 0,
+      transactions_created: 0,
+      transactions_ignored: 0,
+      accounts: [],
+      categories: [],
+      balances: { actual: { start: null, end: null } },
+    };
+  }
+
+  const client = await pool.connect();
   try {
-    if (DISABLE_DB) {
-      return res.json({
-        summary: {
-          imports_count: 0,
-          transactions_total: 0,
-          transactions_created: 0,
-          transactions_ignored: 0,
-          accounts: [],
-          categories: [],
-          balances: { actual: { start: null, end: null } },
-        },
-      });
-    }
-
-    const client = await pool.connect();
-    try {
-      const { rows: importStatsRows } = await client.query(
-        `SELECT COUNT(*)::bigint AS imports_count, COALESCE(SUM(rows_count), 0)::bigint AS transactions_total
+    const { rows: importStatsRows } = await client.query(
+      `SELECT COUNT(*)::bigint AS imports_count, COALESCE(SUM(rows_count), 0)::bigint AS transactions_total
            FROM import_batch`,
-      );
-      const importsCount = Number(importStatsRows[0]?.imports_count ?? 0);
-      const transactionsTotal = Number(importStatsRows[0]?.transactions_total ?? 0);
+    );
+    const importsCount = Number(importStatsRows[0]?.imports_count ?? 0);
+    const transactionsTotal = Number(importStatsRows[0]?.transactions_total ?? 0);
 
-      const { rows: transactionsCreatedRows } = await client.query(
-        `SELECT COUNT(*)::bigint AS transactions_created FROM transaction`,
-      );
-      const transactionsCreated = Number(transactionsCreatedRows[0]?.transactions_created ?? 0);
+    const { rows: transactionsCreatedRows } = await client.query(
+      `SELECT COUNT(*)::bigint AS transactions_created FROM transaction`,
+    );
+    const transactionsCreated = Number(transactionsCreatedRows[0]?.transactions_created ?? 0);
 
-      const transactionsIgnored = Math.max(transactionsTotal - transactionsCreated, 0);
+    const transactionsIgnored = Math.max(transactionsTotal - transactionsCreated, 0);
 
-      const { rows: accountRows } = await client.query(
-        `SELECT a.id, a.name, a.iban, COUNT(t.id)::bigint AS created
+    const { rows: accountRows } = await client.query(
+      `SELECT a.id, a.name, a.iban, COUNT(t.id)::bigint AS created
            FROM transaction t
            JOIN account a ON a.id = t.account_id
           GROUP BY a.id, a.name, a.iban
           ORDER BY a.name ASC, a.id ASC`,
-      );
-      const accounts = accountRows.map((row) => {
-        const id = Number(row.id);
-        return {
-          id: Number.isFinite(id) ? id : null,
-          name: row.name ?? '',
-          iban: row.iban ?? null,
-          created: Number(row.created ?? 0),
-        };
-      });
+    );
+    const accounts = accountRows.map((row) => {
+      const id = Number(row.id);
+      return {
+        id: Number.isFinite(id) ? id : null,
+        name: row.name ?? '',
+        iban: row.iban ?? null,
+        created: Number(row.created ?? 0),
+      };
+    });
 
-      const { rows: categoryRows } = await client.query(
-        `SELECT c.id, c.name, c.kind, COUNT(t.id)::bigint AS count
+    const { rows: categoryRows } = await client.query(
+      `SELECT c.id, c.name, c.kind, COUNT(t.id)::bigint AS count
            FROM transaction t
            JOIN category c ON c.id = t.category_id
           GROUP BY c.id, c.name, c.kind
           ORDER BY COUNT(t.id) DESC, c.name ASC, c.id ASC`,
-      );
-      const categories = categoryRows.map((row) => {
-        const id = Number(row.id);
-        return {
-          id: Number.isFinite(id) ? id : null,
-          name: row.name ?? '',
-          kind: row.kind ?? null,
-          count: Number(row.count ?? 0),
-        };
-      });
+    );
+    const categories = categoryRows.map((row) => {
+      const id = Number(row.id);
+      return {
+        id: Number.isFinite(id) ? id : null,
+        name: row.name ?? '',
+        kind: row.kind ?? null,
+        count: Number(row.count ?? 0),
+      };
+    });
 
-      const { rows: sumAmountRows } = await client.query(
-        `SELECT COALESCE(SUM(amount), 0) AS total_amount FROM transaction`,
-      );
-      const netAmountRaw = sumAmountRows[0]?.total_amount;
-      const netAmount = Number(netAmountRaw);
+    const { rows: sumAmountRows } = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) AS total_amount FROM transaction`,
+    );
+    const netAmountRaw = sumAmountRows[0]?.total_amount;
+    const netAmount = Number(netAmountRaw);
 
-      const { rows: balanceRows } = await client.query(
-        `SELECT balance_after
+    const { rows: balanceRows } = await client.query(
+      `SELECT balance_after
            FROM transaction
           WHERE balance_after IS NOT NULL
           ORDER BY occurred_on DESC NULLS LAST, id DESC
           LIMIT 1`,
-      );
-      const actualEndRaw = balanceRows[0]?.balance_after;
-      const actualEnd = Number.isFinite(Number(actualEndRaw)) ? Number(actualEndRaw) : null;
+    );
+    const actualEndRaw = balanceRows[0]?.balance_after;
+    const actualEnd = Number.isFinite(Number(actualEndRaw)) ? Number(actualEndRaw) : null;
 
-      let actualStart = null;
-      if (actualEnd !== null && Number.isFinite(netAmount)) {
-        actualStart = Number((actualEnd - netAmount).toFixed(2));
-      }
-
-      const summary = {
-        imports_count: importsCount,
-        transactions_total: transactionsTotal,
-        transactions_created: transactionsCreated,
-        transactions_ignored: transactionsIgnored,
-        accounts,
-        categories,
-        balances: { actual: { start: actualStart, end: actualEnd } },
-      };
-
-      return res.json({ summary });
-    } finally {
-      client.release();
+    let actualStart = null;
+    if (actualEnd !== null && Number.isFinite(netAmount)) {
+      actualStart = Number((actualEnd - netAmount).toFixed(2));
     }
+
+    return {
+      imports_count: importsCount,
+      transactions_total: transactionsTotal,
+      transactions_created: transactionsCreated,
+      transactions_ignored: transactionsIgnored,
+      accounts,
+      categories,
+      balances: { actual: { start: actualStart, end: actualEnd } },
+    };
+  } finally {
+    client.release();
+  }
+}
+
+router.get('/summary', async (req, res, next) => {
+  try {
+    const summary = await getGlobalImportSummary();
+    return res.json({ summary });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/summary/export', async (req, res, next) => {
+  try {
+    const data = await getGlobalImportSummary();
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Résumé global');
+
+    sheet.addRow(['Imports traités', data.imports_count]);
+    sheet.addRow(['Transactions analysées', data.transactions_total]);
+    sheet.addRow(['Transactions créées', data.transactions_created]);
+    sheet.addRow(['Transactions ignorées', data.transactions_ignored]);
+    sheet.addRow([]);
+
+    sheet.addRow(['Comptes']);
+    sheet.addRow(['Nom', 'IBAN', 'Transactions créées']);
+    (data.accounts || []).forEach((acc) => {
+      sheet.addRow([acc.name, acc.iban, acc.created]);
+    });
+    sheet.addRow([]);
+
+    sheet.addRow(['Catégories']);
+    sheet.addRow(['Nom', 'Type', 'Transactions']);
+    (data.categories || []).forEach((cat) => {
+      sheet.addRow([cat.name, cat.kind, cat.count]);
+    });
+    sheet.addRow([]);
+
+    sheet.addRow(['Balances']);
+    sheet.addRow(['Solde initial', data.balances?.actual?.start]);
+    sheet.addRow(['Solde final', data.balances?.actual?.end]);
+
+    const today = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Résumé_global_imports_${today}.xlsx"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
     next(error);
   }
