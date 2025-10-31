@@ -957,7 +957,8 @@ router.get('/summary/export', async (req, res, next) => {
 
     const today = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Résumé_global_imports_${today}.xlsx"`);
+    const safeFileName = encodeURIComponent(`Résumé_global_imports_${today}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
 
     await workbook.xlsx.write(res);
     res.end();
