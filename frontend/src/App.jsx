@@ -260,9 +260,21 @@ function ImportsDashboard() {
     return summary.accounts
   }, [importSummary])
 
+  const summaryCategories = useMemo(() => {
+    const summary = importSummary?.summary ?? importSummary
+    if (!summary || !Array.isArray(summary.categories)) {
+      return []
+    }
+    return summary.categories
+  }, [importSummary])
+
   const totalCreatedAllAccounts = useMemo(() => {
     return summaryAccounts.reduce((sum, acc) => sum + (acc.created ?? 0), 0)
   }, [summaryAccounts])
+
+  const totalCategoryTransactions = useMemo(() => {
+    return summaryCategories.reduce((sum, cat) => sum + (cat.count ?? 0), 0)
+  }, [summaryCategories])
 
   const transactionsRows = useMemo(() => {
     return transactions.map(trx => {
@@ -448,6 +460,39 @@ function ImportsDashboard() {
                     Total global
                   </td>
                   <td className="border px-2 py-1 text-right">{totalCreatedAllAccounts}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {summaryCategories.length > 0 && (
+        <Card title="Imports par catégorie">
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-300 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border px-2 py-1 text-left">ID</th>
+                  <th className="border px-2 py-1 text-left">Nom de la catégorie</th>
+                  <th className="border px-2 py-1 text-left">Type</th>
+                  <th className="border px-2 py-1 text-right">Transactions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryCategories.map(cat => (
+                  <tr key={cat.id}>
+                    <td className="border px-2 py-1">{cat.id}</td>
+                    <td className="border px-2 py-1">{cat.name}</td>
+                    <td className="border px-2 py-1">{cat.kind}</td>
+                    <td className="border px-2 py-1 text-right">{cat.count}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold bg-gray-50">
+                  <td colSpan={3} className="border px-2 py-1 text-right">
+                    Total global
+                  </td>
+                  <td className="border px-2 py-1 text-right">{totalCategoryTransactions}</td>
                 </tr>
               </tbody>
             </table>
