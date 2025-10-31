@@ -25,7 +25,9 @@ function serializeAccountPayload(payload, { forUpdate = false } = {}) {
 
   if ('owner_person_id' in payload) {
     const rawOwnerId = payload.owner_person_id;
-    if (rawOwnerId !== '' && rawOwnerId !== null && rawOwnerId !== undefined) {
+    if (rawOwnerId === null || rawOwnerId === '') {
+      body.owner_person_id = null;
+    } else if (rawOwnerId !== undefined) {
       if (typeof rawOwnerId === 'number') {
         body.owner_person_id = rawOwnerId;
       } else if (typeof rawOwnerId === 'string') {
@@ -111,6 +113,11 @@ export async function getImportSummary() {
 export async function getAccounts() {
   const res = await fetch(`${API_URL}/accounts`);
   return jsonOrThrow(res, 'GET /accounts failed');
+}
+
+export async function getPersons() {
+  const res = await fetch(`${API_URL}/persons`);
+  return jsonOrThrow(res, 'GET /persons failed');
 }
 
 export async function createAccount(payload) {

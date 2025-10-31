@@ -19,6 +19,7 @@ import {
 import GlobalReportView from './views/GlobalReportView'
 import RulesView from './views/RulesView'
 import AccountsView from './views/AccountsView'
+import PersonsView from './views/PersonsView'
 
 const categoryKindLabels = {
   income: 'Revenus',
@@ -377,6 +378,18 @@ export default function App() {
               >
                 Comptes
               </NavLink>
+              <NavLink
+                to="/persons"
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-blue-600 border border-blue-100 hover:bg-blue-50'
+                  }`
+                }
+              >
+                Personnes
+              </NavLink>
             </nav>
           </header>
 
@@ -385,6 +398,7 @@ export default function App() {
             <Route path="/imports/summary" element={<GlobalReportView />} />
             <Route path="/rules" element={<RulesView />} />
             <Route path="/accounts" element={<AccountsView />} />
+            <Route path="/persons" element={<PersonsView />} />
           </Routes>
         </div>
       </div>

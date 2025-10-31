@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, Table, formatAmount } from '../components/ui'
-import { createAccount, deleteAccount, getAccounts, updateAccount } from '../api'
+import { createAccount, deleteAccount, getAccounts, getPersons, updateAccount } from '../api'
 
 function normalizeCurrency(value) {
   if (!value) return 'CHF'
@@ -41,13 +41,16 @@ function getInitialOpeningBalance(initialAccount) {
   return ''
 }
 
-function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
+function AccountForm({ initialAccount, onSubmit, onCancel, submitting, persons = [] }) {
   const [form, setForm] = useState({
     name: initialAccount?.name ?? '',
     iban: initialAccount?.iban ?? '',
     currency_code: normalizeCurrency(initialAccount?.currency_code ?? 'CHF'),
     opening_balance: getInitialOpeningBalance(initialAccount),
-    owner_person_id: initialAccount?.owner_person_id ?? '',
+    owner_person_id:
+      initialAccount?.owner_person_id !== undefined && initialAccount?.owner_person_id !== null
+        ? String(initialAccount.owner_person_id)
+        : '',
   })
   const [error, setError] = useState('')
 
@@ -57,7 +60,10 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
       iban: initialAccount?.iban ?? '',
       currency_code: normalizeCurrency(initialAccount?.currency_code ?? 'CHF'),
       opening_balance: getInitialOpeningBalance(initialAccount),
-      owner_person_id: initialAccount?.owner_person_id ?? '',
+      owner_person_id:
+        initialAccount?.owner_person_id !== undefined && initialAccount?.owner_person_id !== null
+          ? String(initialAccount.owner_person_id)
+          : '',
     })
     setError('')
   }, [initialAccount])
@@ -106,14 +112,16 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
       payload.opening_balance = openingBalance
     }
 
-    const ownerId = form.owner_person_id.trim()
-    if (ownerId) {
-      if (/^-?\d+$/.test(ownerId)) {
-        payload.owner_person_id = Number(ownerId)
+    const ownerId = form.owner_person_id
+    if (ownerId && ownerId.trim()) {
+      if (/^-?\d+$/.test(ownerId.trim())) {
+        payload.owner_person_id = Number(ownerId.trim())
       } else {
         setError('Le propriétaire doit être un identifiant numérique.')
         return
       }
+    } else {
+      payload.owner_person_id = null
     }
 
     try {
@@ -174,13 +182,20 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting }) {
         </label>
 
         <label className="flex flex-col gap-1 text-sm md:col-span-2">
-          <span className="text-gray-600">Propriétaire (ID optionnel)</span>
-          <input
-            type="text"
+          <span className="text-gray-600">Propriétaire</span>
+          <select
             value={form.owner_person_id}
             onChange={event => updateField('owner_person_id', event.target.value)}
             className="border rounded px-3 py-2"
-          />
+          >
+            <option value="">Aucun</option>
+            {persons.map(person => (
+              <option key={person.id} value={String(person.id)}>
+                {person.name || `Personne #${person.id}`}
+                {person.email ? ` — ${person.email}` : ''}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 
@@ -215,6 +230,9 @@ export default function AccountsView() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingAccount, setEditingAccount] = useState(null)
   const [formSubmitting, setFormSubmitting] = useState(false)
+  const [persons, setPersons] = useState([])
+  const [personsError, setPersonsError] = useState('')
+  const [personsLoading, setPersonsLoading] = useState(true)
 
   const loadAccounts = useCallback(async () => {
     setLoading(true)
@@ -234,6 +252,42 @@ export default function AccountsView() {
   useEffect(() => {
     loadAccounts()
   }, [loadAccounts])
+
+  useEffect(() => {
+    let active = true
+    async function loadPersons() {
+      setPersonsLoading(true)
+      setPersonsError('')
+      try {
+        const data = await getPersons()
+        if (!active) return
+        const list = Array.isArray(data) ? data.slice() : []
+        list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        setPersons(list)
+      } catch (err) {
+        if (!active) return
+        setPersonsError(err.message || String(err))
+      } finally {
+        if (active) {
+          setPersonsLoading(false)
+        }
+      }
+    }
+    loadPersons()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const personsById = useMemo(() => {
+    const map = new Map()
+    persons.forEach(person => {
+      if (person?.id !== undefined && person?.id !== null) {
+        map.set(person.id, person)
+      }
+    })
+    return map
+  }, [persons])
 
   async function handleCreate(payload) {
     setFormSubmitting(true)
@@ -278,6 +332,10 @@ export default function AccountsView() {
       const status = deriveStatus(account)
       const disableActions = rowBusyId !== null || formSubmitting
       const hasId = Boolean(account?.id)
+      const owner =
+        account?.owner_person_id !== undefined && account?.owner_person_id !== null
+          ? personsById.get(account.owner_person_id)
+          : null
       return [
         <span key={`name-${account.id}`} className="font-medium text-gray-800">
           {account.name || account.id || '-'}
@@ -293,9 +351,16 @@ export default function AccountsView() {
             ? formatAmount(Number(account.opening_balance), account.currency_code || 'CHF')
             : '—'}
         </span>,
-        <span key={`owner-${account.id}`} className="text-sm text-gray-600">
-          {account.owner_person_id || '—'}
-        </span>,
+        owner ? (
+          <div key={`owner-${account.id}`} className="text-sm text-gray-600">
+            <div className="font-medium text-gray-700">{owner.name}</div>
+            {owner.email ? <div className="text-xs text-gray-500">{owner.email}</div> : null}
+          </div>
+        ) : (
+          <span key={`owner-${account.id}`} className="text-sm text-gray-600">
+            {account.owner_person_id ? `#${account.owner_person_id}` : '—'}
+          </span>
+        ),
         <span
           key={`status-${account.id}`}
           className={`text-sm font-medium ${status.active ? 'text-emerald-600' : 'text-gray-500'}`}
@@ -329,7 +394,7 @@ export default function AccountsView() {
         </div>,
       ]
     })
-  }, [accounts, rowBusyId, formSubmitting])
+  }, [accounts, rowBusyId, formSubmitting, personsById])
 
   return (
     <div className="space-y-6">
@@ -350,28 +415,37 @@ export default function AccountsView() {
         }
       >
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {personsError && (
+          <p className="text-sm text-red-600">Erreur de chargement des personnes : {personsError}</p>
+        )}
         {loading ? (
           <p className="text-sm text-gray-600">Chargement des comptes...</p>
         ) : (
-          <Table
-            headers={[
-              'Nom',
-              'IBAN',
-              'Devise',
-              'Solde initial',
-              'Propriétaire',
-              'Statut',
-              'Actions',
-            ]}
-            rows={tableRows}
-            emptyLabel="Aucun compte enregistré"
-          />
+          <>
+            {personsLoading && (
+              <p className="text-sm text-gray-600">Chargement des personnes...</p>
+            )}
+            <Table
+              headers={[
+                'Nom',
+                'IBAN',
+                'Devise',
+                'Solde initial',
+                'Propriétaire',
+                'Statut',
+                'Actions',
+              ]}
+              rows={tableRows}
+              emptyLabel="Aucun compte enregistré"
+            />
+          </>
         )}
       </Card>
 
       {showCreateForm && (
         <Card title="Nouveau compte">
           <AccountForm
+            persons={persons}
             onSubmit={payload => handleCreate(payload)}
             onCancel={() => setShowCreateForm(false)}
             submitting={formSubmitting}
@@ -383,6 +457,7 @@ export default function AccountsView() {
         <Card title={`Modifier le compte ${editingAccount.name || editingAccount.id}`}>
           <AccountForm
             initialAccount={editingAccount}
+            persons={persons}
             onSubmit={payload => handleUpdate(editingAccount.id, payload)}
             onCancel={() => setEditingAccount(null)}
             submitting={formSubmitting}
