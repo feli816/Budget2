@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import {
   Badge,
   Card,
@@ -17,10 +17,10 @@ import {
   getCategories,
   getImportSummary,
 } from './api'
-import GlobalReportView from './views/GlobalReportView'
-import RulesView from './views/RulesView'
-import AccountsView from './views/AccountsView'
-import PersonsView from './views/PersonsView'
+import GlobalReportView from './views/GlobalReportView.jsx'
+import RulesView from './views/RulesView.jsx'
+import AccountsView from './views/AccountsView.jsx'
+import PersonsView from './views/PersonsView.jsx'
 
 const categoryKindLabels = {
   income: 'Revenus',
@@ -509,7 +509,7 @@ function ImportsDashboard() {
 
 export default function App() {
   return (
-    <Router>
+    <BrowserRouter>
       <div className="min-h-screen bg-gray-50 text-gray-900">
         <div className="max-w-5xl mx-auto p-6 space-y-6">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -519,7 +519,7 @@ export default function App() {
             </div>
             <nav className="flex gap-2">
               <NavLink
-                to="/"
+                to="/imports"
                 end
                 className={({ isActive }) =>
                   `px-3 py-2 rounded-md text-sm font-medium ${
@@ -584,6 +584,7 @@ export default function App() {
 
           <Routes>
             <Route path="/" element={<ImportsDashboard />} />
+            <Route path="/imports" element={<ImportsDashboard />} />
             <Route path="/imports/summary" element={<GlobalReportView />} />
             <Route path="/rules" element={<RulesView />} />
             <Route path="/accounts" element={<AccountsView />} />
@@ -591,6 +592,6 @@ export default function App() {
           </Routes>
         </div>
       </div>
-    </Router>
+    </BrowserRouter>
   )
 }
