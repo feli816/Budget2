@@ -893,7 +893,7 @@ async function getGlobalImportSummary() {
                  GROUP BY import_batch_id
               ) AS stats
            ON stats.import_batch_id = ib.id
-        ORDER BY ib.imported_at DESC NULLS LAST, ib.id DESC`,
+        ORDER BY COALESCE(ib.imported_at, ib.created_at) DESC NULLS LAST, ib.id DESC`,
     );
     const importDetails = importDetailRows.map((row) => {
       const id = Number(row.id);
