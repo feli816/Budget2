@@ -879,7 +879,7 @@ async function getGlobalImportSummary() {
     const { rows: importDetailRows } = await client.query(
       `SELECT ib.id,
               ib.original_filename AS filename,
-              COALESCE(ib.imported_at, ib.created_at) AS created_at,
+              ib.created_at AS created_at,
               ib.rows_count AS total_transactions,
               COALESCE(stats.created_transactions, 0)::bigint AS created_transactions,
               GREATEST(ib.rows_count - COALESCE(stats.created_transactions, 0), 0)::bigint AS ignored_transactions,
@@ -893,7 +893,7 @@ async function getGlobalImportSummary() {
                  GROUP BY import_batch_id
               ) AS stats
            ON stats.import_batch_id = ib.id
-        ORDER BY COALESCE(ib.imported_at, ib.created_at) DESC NULLS LAST, ib.id DESC`,
+        ORDER BY ib.created_at DESC NULLS LAST, ib.id DESC`,
     );
     const importDetails = importDetailRows.map((row) => {
       const id = Number(row.id);
