@@ -26,3 +26,10 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+package-lock.json
+pnpm-lock.yaml
+backend/pnpm-lock.yaml
+frontend/pnpm-lock.yaml
+backend/uploads/
+backend/backend/
+docker/
