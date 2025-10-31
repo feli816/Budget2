@@ -931,29 +931,106 @@ router.get('/summary/export', async (req, res, next) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Résumé global');
 
-    sheet.addRow(['Imports traités', data.imports_count]);
-    sheet.addRow(['Transactions analysées', data.transactions_total]);
-    sheet.addRow(['Transactions créées', data.transactions_created]);
-    sheet.addRow(['Transactions ignorées', data.transactions_ignored]);
+    const headerStyle = {
+      font: { bold: true },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+    const dataBorder = {
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    const title = sheet.addRow(['Résumé global des imports']);
+    title.font = { size: 14, bold: true };
+    title.alignment = { horizontal: 'center' };
+    sheet.mergeCells(`A${title.number}:C${title.number}`);
     sheet.addRow([]);
 
-    sheet.addRow(['Comptes']);
-    sheet.addRow(['Nom', 'IBAN', 'Transactions créées']);
+    const summaryRows = [
+      ['Imports traités', data.imports_count],
+      ['Transactions analysées', data.transactions_total],
+      ['Transactions créées', data.transactions_created],
+      ['Transactions ignorées', data.transactions_ignored],
+    ];
+    summaryRows.forEach((values) => {
+      const row = sheet.addRow(values);
+      row.eachCell((cell) => {
+        cell.border = dataBorder.border;
+      });
+    });
+    sheet.addRow([]);
+
+    const comptesTitle = sheet.addRow(['Comptes']);
+    comptesTitle.getCell(1).font = { bold: true };
+    comptesTitle.getCell(1).border = dataBorder.border;
+    const comptesHeader = sheet.addRow(['Nom', 'IBAN', 'Transactions créées']);
+    comptesHeader.eachCell((cell) => {
+      cell.font = headerStyle.font;
+      cell.alignment = headerStyle.alignment;
+      cell.border = headerStyle.border;
+    });
     (data.accounts || []).forEach((acc) => {
-      sheet.addRow([acc.name, acc.iban, acc.created]);
+      const row = sheet.addRow([acc.name, acc.iban, acc.created]);
+      row.eachCell((cell) => {
+        cell.border = dataBorder.border;
+      });
     });
     sheet.addRow([]);
 
-    sheet.addRow(['Catégories']);
-    sheet.addRow(['Nom', 'Type', 'Transactions']);
+    const categoriesTitle = sheet.addRow(['Catégories']);
+    categoriesTitle.getCell(1).font = { bold: true };
+    categoriesTitle.getCell(1).border = dataBorder.border;
+    const categoriesHeader = sheet.addRow(['Nom', 'Type', 'Transactions']);
+    categoriesHeader.eachCell((cell) => {
+      cell.font = headerStyle.font;
+      cell.alignment = headerStyle.alignment;
+      cell.border = headerStyle.border;
+    });
     (data.categories || []).forEach((cat) => {
-      sheet.addRow([cat.name, cat.kind, cat.count]);
+      const row = sheet.addRow([cat.name, cat.kind, cat.count]);
+      row.eachCell((cell) => {
+        cell.border = dataBorder.border;
+      });
     });
     sheet.addRow([]);
 
-    sheet.addRow(['Balances']);
-    sheet.addRow(['Solde initial', data.balances?.actual?.start]);
-    sheet.addRow(['Solde final', data.balances?.actual?.end]);
+    const balancesTitle = sheet.addRow(['Balances']);
+    balancesTitle.getCell(1).font = { bold: true };
+    balancesTitle.getCell(1).border = dataBorder.border;
+    const balancesHeader = sheet.addRow(['Type', 'Montant']);
+    balancesHeader.eachCell((cell) => {
+      cell.font = headerStyle.font;
+      cell.alignment = headerStyle.alignment;
+      cell.border = headerStyle.border;
+    });
+    [
+      ['Solde initial', data.balances?.actual?.start],
+      ['Solde final', data.balances?.actual?.end],
+    ].forEach((values) => {
+      const row = sheet.addRow(values);
+      row.eachCell((cell) => {
+        cell.border = dataBorder.border;
+      });
+    });
+
+    sheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const text = toText(cell.value);
+        maxLength = Math.max(maxLength, text.length);
+      });
+      column.width = maxLength < 10 ? 10 : maxLength + 2;
+    });
 
     const today = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
