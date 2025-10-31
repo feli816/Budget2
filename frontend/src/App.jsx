@@ -15,6 +15,7 @@ import {
   getImportReport,
   getAccounts,
   getCategories,
+  getImportSummary,
 } from './api'
 import GlobalReportView from './views/GlobalReportView'
 import RulesView from './views/RulesView'
@@ -137,6 +138,7 @@ function ImportsDashboard() {
   const [postResp, setPostResp] = useState(null)
   const [batchId, setBatchId] = useState('')
   const [report, setReport] = useState(null)
+  const [importSummary, setImportSummary] = useState(null)
 
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
@@ -164,6 +166,27 @@ function ImportsDashboard() {
       }
     }
     loadMeta()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadSummary() {
+      try {
+        const data = await getImportSummary()
+        if (!active) return
+        setImportSummary(data || null)
+      } catch (error) {
+        if (!active) return
+        setImportSummary(null)
+      }
+    }
+
+    loadSummary()
+
     return () => {
       active = false
     }
@@ -218,6 +241,14 @@ function ImportsDashboard() {
     }
   }
 
+  const importErrors = useMemo(() => {
+    const summary = importSummary?.summary ?? importSummary
+    if (!summary || !Array.isArray(summary.import_errors)) {
+      return []
+    }
+    return summary.import_errors
+  }, [importSummary])
+
   const transactionsRows = useMemo(() => {
     return transactions.map(trx => {
       const amount = typeof trx.amount === 'number' ? trx.amount : Number(trx.amount)
@@ -231,6 +262,20 @@ function ImportsDashboard() {
       ]
     })
   }, [transactions])
+
+  const formatErrorMessage = message => {
+    if (message == null) {
+      return ''
+    }
+    if (typeof message === 'object') {
+      try {
+        return JSON.stringify(message, null, 2)
+      } catch (error) {
+        return String(message)
+      }
+    }
+    return String(message)
+  }
 
   return (
     <div className="space-y-6">
@@ -329,6 +374,35 @@ function ImportsDashboard() {
           {importErr && <p className="text-sm text-red-600">Erreur : {importErr}</p>}
         </div>
       </Card>
+
+      {importErrors.length > 0 && (
+        <Card title="Erreurs d'import">
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-300 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border px-2 py-1 text-left">ID Import</th>
+                  <th className="border px-2 py-1 text-left">Nom du fichier</th>
+                  <th className="border px-2 py-1 text-left">Statut</th>
+                  <th className="border px-2 py-1 text-left">Message d'erreur</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importErrors.map(err => (
+                  <tr key={err.id || `${err.filename}-${err.status}`} className="align-top">
+                    <td className="border px-2 py-1 text-center whitespace-nowrap">{err.id ?? '-'}</td>
+                    <td className="border px-2 py-1">{err.filename || '-'}</td>
+                    <td className="border px-2 py-1">{err.status || '-'}</td>
+                    <td className="border px-2 py-1 font-mono text-xs whitespace-pre-wrap">
+                      {formatErrorMessage(err.message)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {report && (
         <ImportReportView report={report} />
