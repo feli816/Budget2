@@ -876,6 +876,41 @@ async function getGlobalImportSummary() {
       };
     });
 
+    const { rows: importDetailRows } = await client.query(
+      `SELECT ib.id,
+              ib.original_filename AS filename,
+              ib.imported_at AS created_at,
+              ib.rows_count AS total_transactions,
+              COALESCE(stats.created_transactions, 0)::bigint AS created_transactions,
+              GREATEST(ib.rows_count - COALESCE(stats.created_transactions, 0), 0)::bigint AS ignored_transactions,
+              ib.status
+         FROM import_batch ib
+         LEFT JOIN (
+                SELECT import_batch_id,
+                       COUNT(*)::bigint AS created_transactions
+                  FROM transaction
+                 WHERE import_batch_id IS NOT NULL
+                 GROUP BY import_batch_id
+              ) AS stats
+           ON stats.import_batch_id = ib.id
+        ORDER BY ib.imported_at DESC NULLS LAST, ib.id DESC`,
+    );
+    const importDetails = importDetailRows.map((row) => {
+      const id = Number(row.id);
+      const totalTransactions = Number(row.total_transactions ?? 0);
+      const createdTransactions = Number(row.created_transactions ?? 0);
+      const ignoredTransactions = Number(row.ignored_transactions ?? 0);
+      return {
+        id: Number.isFinite(id) ? id : null,
+        filename: row.filename ?? null,
+        created_at: row.created_at ?? null,
+        total_transactions: Number.isFinite(totalTransactions) ? totalTransactions : 0,
+        created_transactions: Number.isFinite(createdTransactions) ? createdTransactions : 0,
+        ignored_transactions: Number.isFinite(ignoredTransactions) ? ignoredTransactions : 0,
+        status: row.status ?? null,
+      };
+    });
+
     const { rows: sumAmountRows } = await client.query(
       `SELECT COALESCE(SUM(amount), 0) AS total_amount FROM transaction`,
     );
@@ -905,6 +940,7 @@ async function getGlobalImportSummary() {
       accounts,
       categories,
       balances: { actual: { start: actualStart, end: actualEnd } },
+      import_details: importDetails,
     };
   } finally {
     client.release();
@@ -1024,6 +1060,56 @@ router.get('/summary/export', async (req, res, next) => {
     });
 
     sheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const text = toText(cell.value);
+        maxLength = Math.max(maxLength, text.length);
+      });
+      column.width = maxLength < 10 ? 10 : maxLength + 2;
+    });
+
+    const detailsSheet = workbook.addWorksheet('Détails des imports');
+    const detailsTitle = detailsSheet.addRow(['Détails par import']);
+    detailsTitle.font = { size: 14, bold: true };
+    detailsTitle.alignment = { horizontal: 'center' };
+    detailsSheet.mergeCells(`A${detailsTitle.number}:G${detailsTitle.number}`);
+    detailsSheet.addRow([]);
+
+    const detailHeaders = [
+      'ID',
+      'Nom du fichier',
+      'Date',
+      'Transactions totales',
+      'Créées',
+      'Ignorées',
+      'Statut',
+    ];
+    const detailsHeaderRow = detailsSheet.addRow(detailHeaders);
+    detailsHeaderRow.eachCell((cell) => {
+      cell.font = headerStyle.font;
+      cell.alignment = headerStyle.alignment;
+      cell.border = headerStyle.border;
+    });
+
+    (data.import_details || []).forEach((detail) => {
+      const formattedDate = detail.created_at
+        ? new Date(detail.created_at).toISOString().slice(0, 10)
+        : '';
+      const row = detailsSheet.addRow([
+        detail.id,
+        detail.filename,
+        formattedDate,
+        detail.total_transactions,
+        detail.created_transactions,
+        detail.ignored_transactions,
+        detail.status || '',
+      ]);
+      row.eachCell((cell) => {
+        cell.border = dataBorder.border;
+      });
+    });
+
+    detailsSheet.columns.forEach((column) => {
       let maxLength = 0;
       column.eachCell({ includeEmpty: true }, (cell) => {
         const text = toText(cell.value);
