@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, Table } from '../components/ui'
 import {
+  createCategory,
   createRule,
   deleteRule,
   getCategories,
@@ -183,11 +184,38 @@ export default function RulesView() {
     setError('')
     try {
       const [rulesData, categoriesData] = await Promise.all([getRules(), getCategories()])
-      setRules(Array.isArray(rulesData) ? rulesData : [])
-      const sortedCategories = Array.isArray(categoriesData)
-        ? [...categoriesData].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-        : []
+      let fallbackErrorMessage = ''
+
+      const processedCategories = Array.isArray(categoriesData) ? [...categoriesData] : []
+      let fallbackCategory = processedCategories.find(
+        category =>
+          typeof category?.name === 'string' && category.name.trim().toLowerCase() === 'divers'
+      )
+
+      if (!fallbackCategory) {
+        try {
+          const createdCategory = await createCategory({ name: 'Divers', kind: 'expense' })
+          if (createdCategory) {
+            processedCategories.push(createdCategory)
+            fallbackCategory = createdCategory
+          }
+        } catch (creationErr) {
+          fallbackErrorMessage =
+            creationErr?.message ||
+            'Impossible de créer automatiquement la catégorie « Divers ».'
+        }
+      }
+
+      const sortedCategories = processedCategories.sort((a, b) =>
+        (a.name || '').localeCompare(b.name || '')
+      )
+
       setCategories(sortedCategories)
+      setRules(Array.isArray(rulesData) ? rulesData : [])
+
+      if (fallbackErrorMessage) {
+        setError(fallbackErrorMessage)
+      }
     } catch (err) {
       setError(err.message || String(err))
     } finally {
@@ -198,6 +226,15 @@ export default function RulesView() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const fallbackCategory = useMemo(() => {
+    return (
+      categories.find(
+        category =>
+          typeof category?.name === 'string' && category.name.trim().toLowerCase() === 'divers'
+      ) || null
+    )
+  }, [categories])
 
   const categoriesById = useMemo(() => {
     const map = new Map()
@@ -272,7 +309,30 @@ export default function RulesView() {
   }
 
   const tableRows = useMemo(() => {
-    return rules.map((rule, index) => {
+    const rows = []
+
+    if (fallbackCategory) {
+      rows.push([
+        <span key="priority-fallback" className="font-semibold text-gray-700">
+          1
+        </span>,
+        <span key="target-fallback" className="uppercase tracking-wide text-xs text-gray-600">
+          {targetKindLabels.expense}
+        </span>,
+        <span key="category-fallback" className="font-medium">{fallbackCategory.name}</span>,
+        <span key="keywords-fallback" className="text-sm text-gray-600">—</span>,
+        <span key="enabled-fallback" className="text-sm font-medium text-emerald-600">
+          Activée
+        </span>,
+        <div key="actions-fallback" className="flex flex-wrap gap-2">
+          <span className="px-3 py-1 rounded-full border border-gray-200 bg-gray-100 text-gray-600 text-sm font-medium">
+            Verrouillée
+          </span>
+        </div>,
+      ])
+    }
+
+    const dynamicRows = rules.map((rule, index) => {
       const category = categoriesById.get(rule.category_id)
       const keywords = Array.isArray(rule.keywords) ? rule.keywords : []
       const moveUpDisabled = index === 0 || rowBusyId !== null
@@ -337,7 +397,9 @@ export default function RulesView() {
         </div>,
       ]
     })
-  }, [rules, categoriesById, rowBusyId])
+
+    return [...rows, ...dynamicRows]
+  }, [rules, categoriesById, rowBusyId, fallbackCategory])
 
   return (
     <div className="space-y-6">

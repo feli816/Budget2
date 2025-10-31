@@ -203,6 +203,37 @@ export async function getCategories(params = {}) {
   return jsonOrThrow(res, 'GET /categories failed');
 }
 
+export async function createCategory(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Category payload must be an object');
+  }
+
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  if (!name) {
+    throw new Error('Le nom de la catégorie est obligatoire.');
+  }
+
+  const allowedKinds = ['income', 'expense', 'transfer'];
+  const kind = typeof payload.kind === 'string' ? payload.kind : '';
+  if (!allowedKinds.includes(kind)) {
+    throw new Error('Le type de catégorie est invalide.');
+  }
+
+  const body = {
+    name,
+    kind,
+    description: payload.description ?? null,
+  };
+
+  const res = await fetch(`${API_URL}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  return jsonOrThrow(res, 'POST /categories failed');
+}
+
 export async function getTransactions(params = {}, options = {}) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
