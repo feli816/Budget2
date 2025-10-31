@@ -274,13 +274,32 @@ function ImportsDashboard() {
               Créer un import (POST /imports/excel)
             </button>
 
-            <input
-              type="text"
-              className="border rounded px-3 py-2 w-56"
-              placeholder="IBAN du compte"
-              value={manualIban}
-              onChange={e => setManualIban(e.target.value)}
-            />
+            <div className="flex flex-col gap-1">
+              <label htmlFor="import-iban-select" className="text-sm text-gray-600">
+                IBAN du compte
+              </label>
+              <select
+                id="import-iban-select"
+                className="border rounded px-3 py-2 w-56"
+                value={manualIban}
+                onChange={e => setManualIban(e.target.value)}
+              >
+                <option value="">-- Sélectionner un compte existant --</option>
+                {accounts.map(acc => (
+                  <option key={acc.id} value={acc.iban}>
+                    {acc.iban} — {acc.name || 'Compte sans nom'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">Ou saisir un nouvel IBAN :</p>
+              <input
+                type="text"
+                className="border rounded px-3 py-2 w-56"
+                placeholder="Saisir un nouvel IBAN"
+                value={manualIban}
+                onChange={e => setManualIban(e.target.value)}
+              />
+            </div>
 
             <input
               type="number"
