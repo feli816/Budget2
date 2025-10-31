@@ -20,6 +20,10 @@ export default function GlobalReportView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const handleExport = () => {
+    window.open('/imports/summary/export', '_blank', 'noopener')
+  }
+
   useEffect(() => {
     let active = true
 
@@ -94,7 +98,7 @@ export default function GlobalReportView() {
         right={(
           <button
             type="button"
-            onClick={() => window.open('http://localhost:3000/imports/summary/export', '_blank')}
+            onClick={handleExport}
             className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
           >
             Exporter (.xlsx)

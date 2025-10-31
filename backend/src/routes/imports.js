@@ -922,6 +922,10 @@ router.get('/summary', async (req, res, next) => {
 
 router.get('/summary/export', async (req, res, next) => {
   try {
+    if (!ENABLE_XLSX) {
+      throw new HttpError(503, "Export XLSX désactivé.");
+    }
+
     const data = await getGlobalImportSummary();
 
     const workbook = new ExcelJS.Workbook();
