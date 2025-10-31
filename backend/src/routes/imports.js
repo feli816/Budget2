@@ -462,6 +462,8 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
         status: 'completed',
         rows_count: totalsParsed,
         report,
+        metadata: parsed.metadata ?? {},
+        source_rows: parsed.rows ?? [],
       };
 
       __stubMemory.set(String(importBatchId), stubBatch);
@@ -1175,6 +1177,112 @@ router.get('/summary/export', async (req, res, next) => {
 
     await workbook.xlsx.write(res);
     res.end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/check', async (req, res, next) => {
+  try {
+    const importId = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(importId) || importId <= 0) {
+      throw badRequest('Identifiant import invalide');
+    }
+
+    if (DISABLE_DB) {
+      const hit = __stubMemory.get(String(importId));
+      if (!hit) {
+        throw notFound('Import introuvable (mode hors-DB)');
+      }
+
+      const baseIban = typeof hit?.metadata?.iban === 'string' ? hit.metadata.iban : null;
+      const rows = Array.isArray(hit?.source_rows) ? hit.source_rows : [];
+      const results = rows.map((row, index) => {
+        const rawAmount = typeof row?.amount === 'number' ? row.amount : Number(row?.amount);
+        const amount = Number.isFinite(rawAmount) ? Number(rawAmount.toFixed(2)) : null;
+        const description = row?.description ?? null;
+        const occurredOn = row?.occurred_on ?? row?.date ?? null;
+        return {
+          row: index + 1,
+          description,
+          amount,
+          date: occurredOn,
+          category: null,
+          type: null,
+          account: null,
+          iban: row?.iban ?? baseIban ?? null,
+          rule: null,
+          status: 'UNCATEGORIZED',
+        };
+      });
+
+      return res.json(results);
+    }
+
+    const { rows: importRows } = await pool.query('SELECT id FROM import_batch WHERE id = $1', [importId]);
+    if (!importRows.length) {
+      throw notFound('Import introuvable');
+    }
+
+    const { rows } = await pool.query(
+      `SELECT
+         t.id AS transaction_id,
+         t.description,
+         t.amount,
+         t.occurred_on AS date,
+         c.name AS category,
+         c.kind AS category_type,
+         a.name AS account,
+         a.iban,
+         rule_info.keywords AS rule_keywords
+       FROM transaction t
+       LEFT JOIN category c ON t.category_id = c.id
+       LEFT JOIN account a ON t.account_id = a.id
+       LEFT JOIN LATERAL (
+         SELECT array_to_string(r.keywords, ', ') AS keywords
+           FROM rule r
+          WHERE r.enabled = TRUE AND r.category_id = t.category_id
+          ORDER BY r.priority DESC, r.created_at ASC
+          LIMIT 1
+       ) AS rule_info ON TRUE
+      WHERE t.import_batch_id = $1
+      ORDER BY t.id`,
+      [importId],
+    );
+
+    const results = rows.map((row, index) => {
+      const amountNumber = Number(row.amount);
+      const amount = Number.isFinite(amountNumber) ? Number(amountNumber.toFixed(2)) : null;
+      const hasDescription = typeof row.description === 'string' && row.description.trim().length > 0;
+      const hasAmount = Number.isFinite(amountNumber);
+      const status = !row.category
+        ? 'UNCATEGORIZED'
+        : hasDescription && hasAmount
+          ? 'OK'
+          : 'CHECK';
+
+      let formattedDate = null;
+      if (row.date instanceof Date) {
+        formattedDate = row.date.toISOString().slice(0, 10);
+      } else if (row.date) {
+        formattedDate = row.date;
+      }
+
+      return {
+        row: index + 1,
+        description: row.description ?? null,
+        amount,
+        date: formattedDate,
+        category: row.category ?? null,
+        type: row.category_type ?? null,
+        account: row.account ?? null,
+        iban: row.iban ?? null,
+        rule: row.rule_keywords ?? null,
+        status,
+      };
+    });
+
+    return res.json(results);
   } catch (error) {
     next(error);
   }

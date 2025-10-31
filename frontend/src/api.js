@@ -101,6 +101,11 @@ export async function getImportReport(id) {
   return jsonOrThrow(res, `GET /imports/${id} failed`);
 }
 
+export async function getImportCheckReport(id) {
+  const res = await fetch(`${API_URL}/imports/${encodeURIComponent(id)}/check`);
+  return jsonOrThrow(res, `GET /imports/${id}/check failed`);
+}
+
 export async function getImportSummary() {
   const res = await fetch(`${API_URL}/imports/summary`);
   const data = await jsonOrThrow(res, 'GET /imports/summary failed');
