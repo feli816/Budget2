@@ -879,7 +879,7 @@ async function getGlobalImportSummary() {
     const { rows: importDetailRows } = await client.query(
       `SELECT ib.id,
               ib.original_filename AS filename,
-              ib.imported_at AS created_at,
+              COALESCE(ib.imported_at, ib.created_at) AS created_at,
               ib.rows_count AS total_transactions,
               COALESCE(stats.created_transactions, 0)::bigint AS created_transactions,
               GREATEST(ib.rows_count - COALESCE(stats.created_transactions, 0), 0)::bigint AS ignored_transactions,
