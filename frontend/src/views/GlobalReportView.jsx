@@ -21,7 +21,8 @@ export default function GlobalReportView() {
   const [error, setError] = useState('')
 
   const handleExport = () => {
-    window.open('/imports/summary/export', '_blank', 'noopener')
+    const url = 'http://localhost:3000/imports/summary/export'
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   useEffect(() => {
