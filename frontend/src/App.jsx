@@ -251,6 +251,14 @@ function ImportsDashboard() {
     )
   }, [importSummary])
 
+  const summaryAccounts = useMemo(() => {
+    const summary = importSummary?.summary ?? importSummary
+    if (!summary || !Array.isArray(summary.accounts)) {
+      return []
+    }
+    return summary.accounts
+  }, [importSummary])
+
   const transactionsRows = useMemo(() => {
     return transactions.map(trx => {
       const amount = typeof trx.amount === 'number' ? trx.amount : Number(trx.amount)
@@ -400,6 +408,36 @@ function ImportsDashboard() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {summaryAccounts.length > 0 && (
+        <Card title="Imports par compte">
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-300 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border px-2 py-1 text-left">ID</th>
+                  <th className="border px-2 py-1 text-left">Nom du compte</th>
+                  <th className="border px-2 py-1 text-left">IBAN</th>
+                  <th className="border px-2 py-1 text-right">Transactions créées</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryAccounts.map(acc => {
+                  const key = acc.id ?? acc.iban ?? acc.name ?? JSON.stringify(acc)
+                  return (
+                    <tr key={key}>
+                      <td className="border px-2 py-1">{acc.id ?? '-'}</td>
+                      <td className="border px-2 py-1">{acc.name ?? '-'}</td>
+                      <td className="border px-2 py-1 font-mono">{acc.iban ?? '-'}</td>
+                      <td className="border px-2 py-1 text-right">{acc.created ?? '-'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
