@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "budget-backend": "file:.."
+  }
+}
