@@ -246,7 +246,9 @@ function ImportsDashboard() {
     if (!summary || !Array.isArray(summary.import_errors)) {
       return []
     }
-    return summary.import_errors
+    return summary.import_errors.filter(
+      err => err.status === 'error' || (typeof err.message === 'object' && err.message?.error)
+    )
   }, [importSummary])
 
   const transactionsRows = useMemo(() => {
