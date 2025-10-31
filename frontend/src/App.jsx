@@ -13,6 +13,7 @@ import {
   postImportExcelStub,
   postImportExcelFile,
   getImportReport,
+  getImportCheckReport,
   getAccounts,
   getCategories,
   getImportSummary,
@@ -126,6 +127,66 @@ function ImportReportView({ report }) {
   )
 }
 
+function ImportCheckReportTable({ rows }) {
+  const safeRows = Array.isArray(rows) ? rows : []
+
+  const statusStyles = {
+    OK: { className: 'bg-green-100 text-green-700', icon: '✅' },
+    UNCATEGORIZED: { className: 'bg-amber-100 text-amber-700', icon: '⚠️' },
+    CHECK: { className: 'bg-blue-100 text-blue-700', icon: '🔁' },
+  }
+
+  const tableRows = safeRows.map((entry, index) => {
+    const amountNumber = typeof entry?.amount === 'number' ? entry.amount : Number(entry?.amount)
+    const hasValidAmount = Number.isFinite(amountNumber)
+    const amount = hasValidAmount ? amountNumber : null
+    const amountClass = amount == null ? 'text-gray-500' : amount < 0 ? 'text-red-600' : 'text-emerald-600'
+    const statusKey = typeof entry?.status === 'string' ? entry.status.toUpperCase() : 'CHECK'
+    const statusInfo = statusStyles[statusKey] || { className: 'bg-gray-100 text-gray-600', icon: 'ℹ️' }
+
+    return [
+      <span key={`row-${index}`}>{entry?.row ?? index + 1}</span>,
+      <div key={`desc-${index}`} className="space-y-1">
+        <div className="font-medium">{entry?.description || '-'}</div>
+        {entry?.date ? (
+          <div className="text-xs text-gray-500">{formatDate(entry.date)}</div>
+        ) : null}
+      </div>,
+      <span key={`amount-${index}`} className={`font-semibold ${amountClass}`}>
+        {amount == null ? '-' : formatAmount(amount)}
+      </span>,
+      <span key={`cat-${index}`}>{entry?.category || '-'}</span>,
+      <span key={`type-${index}`} className="uppercase text-xs tracking-wide text-gray-600">
+        {entry?.type ? categoryKindLabels[entry.type] || entry.type : '-'}
+      </span>,
+      <div key={`account-${index}`} className="space-y-1">
+        <div>{entry?.account || '-'}</div>
+        {entry?.iban ? <div className="text-xs text-gray-500 font-mono">{entry.iban}</div> : null}
+      </div>,
+      <span key={`rule-${index}`} className="text-xs text-gray-600">
+        {entry?.rule || '-'}
+      </span>,
+      <span
+        key={`status-${index}`}
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold ${statusInfo.className}`}
+      >
+        <span>{statusInfo.icon}</span>
+        <span>{statusKey}</span>
+      </span>,
+    ]
+  })
+
+  return (
+    <Card title="Rapport de contrôle des classifications">
+      <Table
+        headers={["Ligne", "Description", "Montant", "Catégorie", "Type", "Compte", "Règle", "Statut"]}
+        rows={tableRows}
+        emptyLabel="Aucune transaction à afficher"
+      />
+    </Card>
+  )
+}
+
 function ImportsDashboard() {
   const [health, setHealth] = useState(null)
   const [importErr, setImportErr] = useState('')
@@ -139,6 +200,7 @@ function ImportsDashboard() {
   const [batchId, setBatchId] = useState('')
   const [report, setReport] = useState(null)
   const [importSummary, setImportSummary] = useState(null)
+  const [checkReport, setCheckReport] = useState(null)
 
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
@@ -200,6 +262,7 @@ function ImportsDashboard() {
     setImportErr('')
     setBusy(true)
     setReport(null)
+    setCheckReport(null)
 
     try {
       let data
@@ -235,6 +298,23 @@ function ImportsDashboard() {
     try {
       const data = await getImportReport(batchId)
       setReport(data)
+    } catch (e) {
+      setImportErr(e.message || String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCheckReport() {
+    if (!batchId) {
+      alert('Aucun import sélectionné')
+      return
+    }
+    setImportErr('')
+    setBusy(true)
+    try {
+      const data = await getImportCheckReport(batchId)
+      setCheckReport(Array.isArray(data) ? data : [])
     } catch (e) {
       setImportErr(e.message || String(e))
     } finally {
@@ -396,6 +476,14 @@ function ImportsDashboard() {
             >
               Récupérer le rapport (GET /imports/:id)
             </button>
+
+            <button
+              onClick={handleCheckReport}
+              disabled={busy || !batchId}
+              className="px-4 py-2 rounded bg-yellow-500 text-white hover:bg-yellow-600 disabled:opacity-50"
+            >
+              Voir le rapport de contrôle
+            </button>
           </div>
 
           {importErr && <p className="text-sm text-red-600">Erreur : {importErr}</p>}
@@ -502,6 +590,10 @@ function ImportsDashboard() {
 
       {report && (
         <ImportReportView report={report} />
+      )}
+
+      {checkReport !== null && (
+        <ImportCheckReportTable rows={checkReport} />
       )}
     </div>
   )
