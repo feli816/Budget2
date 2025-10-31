@@ -180,6 +180,7 @@ function ImportsDashboard() {
         if (!active) return
         setImportSummary(data || null)
       } catch (error) {
+        console.error('Erreur chargement import summary:', error)
         if (!active) return
         setImportSummary(null)
       }
@@ -258,6 +259,10 @@ function ImportsDashboard() {
     }
     return summary.accounts
   }, [importSummary])
+
+  const totalCreatedAllAccounts = useMemo(() => {
+    return summaryAccounts.reduce((sum, acc) => sum + (acc.created ?? 0), 0)
+  }, [summaryAccounts])
 
   const transactionsRows = useMemo(() => {
     return transactions.map(trx => {
@@ -438,6 +443,12 @@ function ImportsDashboard() {
                     </tr>
                   )
                 })}
+                <tr className="font-semibold bg-gray-50">
+                  <td colSpan={3} className="border px-2 py-1 text-right">
+                    Total global
+                  </td>
+                  <td className="border px-2 py-1 text-right">{totalCreatedAllAccounts}</td>
+                </tr>
               </tbody>
             </table>
           </div>
