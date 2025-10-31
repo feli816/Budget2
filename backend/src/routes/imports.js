@@ -377,16 +377,13 @@ async function loadExistingHashes(client, iban, minDate, maxDate) {
 
 function buildFallbackCategories(categories) {
   const byKind = new Map();
-  const preferences = {
-    income: ['Divers', 'Autres'],
-    expense: ['Divers', 'Autres'],
-    transfer: ['Divers'],
-  };
 
   for (const category of categories) {
-    if (!byKind.has(category.kind)) byKind.set(category.kind, category);
-    const preferredNames = preferences[category.kind] || [];
-    if (preferredNames.includes(category.name)) byKind.set(category.kind, category);
+    if (!category || !category.name || !category.kind) continue;
+    const normalizedName = String(category.name).trim().toLowerCase();
+    if (normalizedName === 'divers') {
+      byKind.set(category.kind, category);
+    }
   }
 
   return byKind;

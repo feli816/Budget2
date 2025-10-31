@@ -134,6 +134,7 @@ function ImportCheckReportTable({ rows }) {
     OK: { className: 'bg-green-100 text-green-700', icon: '✅' },
     UNCATEGORIZED: { className: 'bg-amber-100 text-amber-700', icon: '⚠️' },
     CHECK: { className: 'bg-blue-100 text-blue-700', icon: '🔁' },
+    FALLBACK: { className: 'bg-gray-100 text-gray-700', icon: '🟦' },
   }
 
   const tableRows = safeRows.map((entry, index) => {
@@ -141,7 +142,10 @@ function ImportCheckReportTable({ rows }) {
     const hasValidAmount = Number.isFinite(amountNumber)
     const amount = hasValidAmount ? amountNumber : null
     const amountClass = amount == null ? 'text-gray-500' : amount < 0 ? 'text-red-600' : 'text-emerald-600'
-    const statusKey = typeof entry?.status === 'string' ? entry.status.toUpperCase() : 'CHECK'
+    const isFallbackCategory =
+      typeof entry?.category === 'string' && entry.category.trim().toLowerCase() === 'divers'
+    const rawStatus = isFallbackCategory ? 'FALLBACK' : entry?.status
+    const statusKey = typeof rawStatus === 'string' ? rawStatus.toUpperCase() : 'CHECK'
     const statusInfo = statusStyles[statusKey] || { className: 'bg-gray-100 text-gray-600', icon: 'ℹ️' }
 
     return [
