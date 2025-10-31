@@ -823,6 +823,7 @@ async function getGlobalImportSummary() {
       accounts: [],
       categories: [],
       balances: { actual: { start: null, end: null } },
+      import_errors: [],
     };
   }
 
@@ -911,6 +912,16 @@ async function getGlobalImportSummary() {
       };
     });
 
+    const { rows: errorRows } = await client.query(`
+      SELECT ib.id,
+             ib.original_filename AS filename,
+             ib.status,
+             ib.message
+        FROM import_batch ib
+       WHERE ib.message IS NOT NULL
+       ORDER BY ib.created_at DESC NULLS LAST, ib.id DESC;
+    `);
+
     const { rows: sumAmountRows } = await client.query(
       `SELECT COALESCE(SUM(amount), 0) AS total_amount FROM transaction`,
     );
@@ -941,6 +952,7 @@ async function getGlobalImportSummary() {
       categories,
       balances: { actual: { start: actualStart, end: actualEnd } },
       import_details: importDetails,
+      import_errors: errorRows,
     };
   } finally {
     client.release();
@@ -1116,6 +1128,44 @@ router.get('/summary/export', async (req, res, next) => {
         maxLength = Math.max(maxLength, text.length);
       });
       column.width = maxLength < 10 ? 10 : maxLength + 2;
+    });
+
+    const errorsSheet = workbook.addWorksheet('Erreurs d\'import');
+    const errTitle = errorsSheet.addRow(['Erreurs d\'import']);
+    errTitle.font = { size: 14, bold: true };
+    errTitle.alignment = { horizontal: 'center' };
+    errorsSheet.mergeCells(`A${errTitle.number}:D${errTitle.number}`);
+    errorsSheet.addRow([]);
+
+    const errHeaders = ['ID Import', 'Nom du fichier', 'Statut', 'Message d\'erreur'];
+    const errHeaderRow = errorsSheet.addRow(errHeaders);
+    errHeaderRow.eachCell((cell) => {
+      cell.font = headerStyle.font;
+      cell.alignment = headerStyle.alignment;
+      cell.border = headerStyle.border;
+    });
+
+    (data.import_errors || []).forEach((err) => {
+      const msg =
+        typeof err.message === 'object'
+          ? JSON.stringify(err.message)
+          : err.message || '';
+      const row = errorsSheet.addRow([
+        err.id,
+        err.filename || '',
+        err.status || '',
+        msg,
+      ]);
+      row.eachCell((cell) => (cell.border = dataBorder.border));
+    });
+
+    errorsSheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const text = String(cell.value ?? '');
+        maxLength = Math.max(maxLength, text.length);
+      });
+      column.width = Math.min(Math.max(maxLength + 2, 10), 100);
     });
 
     const today = new Date().toISOString().slice(0, 10);
