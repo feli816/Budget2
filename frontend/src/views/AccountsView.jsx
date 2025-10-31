@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, Table, formatAmount } from '../components/ui'
-import { createAccount, deleteAccount, getAccounts, getPersons, updateAccount } from '../api'
+import { createAccount, createPerson, deleteAccount, getAccounts, getPersons, updateAccount } from '../api'
 
 function normalizeCurrency(value) {
   if (!value) return 'CHF'
@@ -41,7 +41,18 @@ function getInitialOpeningBalance(initialAccount) {
   return ''
 }
 
-function AccountForm({ initialAccount, onSubmit, onCancel, submitting, persons = [] }) {
+function sortPersons(list) {
+  return list.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+}
+
+function AccountForm({
+  initialAccount,
+  onSubmit,
+  onCancel,
+  submitting,
+  persons = [],
+  onRequestCreatePerson,
+}) {
   const [form, setForm] = useState({
     name: initialAccount?.name ?? '',
     iban: initialAccount?.iban ?? '',
@@ -183,19 +194,31 @@ function AccountForm({ initialAccount, onSubmit, onCancel, submitting, persons =
 
         <label className="flex flex-col gap-1 text-sm md:col-span-2">
           <span className="text-gray-600">Propriétaire</span>
-          <select
-            value={form.owner_person_id}
-            onChange={event => updateField('owner_person_id', event.target.value)}
-            className="border rounded px-3 py-2"
-          >
-            <option value="">Aucun</option>
-            {persons.map(person => (
-              <option key={person.id} value={String(person.id)}>
-                {person.name || `Personne #${person.id}`}
-                {person.email ? ` — ${person.email}` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <select
+              value={form.owner_person_id}
+              onChange={event => updateField('owner_person_id', event.target.value)}
+              className="border rounded px-3 py-2"
+            >
+              <option value="">Aucun</option>
+              {persons.map(person => (
+                <option key={person.id} value={String(person.id)}>
+                  {person.name || `Personne #${person.id}`}
+                  {person.email ? ` — ${person.email}` : ''}
+                </option>
+              ))}
+            </select>
+            {typeof onRequestCreatePerson === 'function' && (
+              <button
+                type="button"
+                onClick={onRequestCreatePerson}
+                className="px-3 py-2 rounded-full border border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                disabled={submitting}
+              >
+                Nouvelle personne
+              </button>
+            )}
+          </div>
         </label>
       </div>
 
@@ -233,6 +256,10 @@ export default function AccountsView() {
   const [persons, setPersons] = useState([])
   const [personsError, setPersonsError] = useState('')
   const [personsLoading, setPersonsLoading] = useState(true)
+  const [showPersonModal, setShowPersonModal] = useState(false)
+  const [personForm, setPersonForm] = useState({ name: '', email: '' })
+  const [personFormError, setPersonFormError] = useState('')
+  const [personFormSubmitting, setPersonFormSubmitting] = useState(false)
 
   const loadAccounts = useCallback(async () => {
     setLoading(true)
@@ -261,8 +288,7 @@ export default function AccountsView() {
       try {
         const data = await getPersons()
         if (!active) return
-        const list = Array.isArray(data) ? data.slice() : []
-        list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        const list = Array.isArray(data) ? sortPersons(data) : []
         setPersons(list)
       } catch (err) {
         if (!active) return
@@ -288,6 +314,40 @@ export default function AccountsView() {
     })
     return map
   }, [persons])
+
+  function resetPersonForm() {
+    setPersonForm({ name: '', email: '' })
+    setPersonFormError('')
+  }
+
+  async function handleCreatePersonSubmit(event) {
+    event.preventDefault()
+    setPersonFormError('')
+
+    const trimmedName = personForm.name.trim()
+    if (!trimmedName) {
+      setPersonFormError('Le nom est obligatoire.')
+      return
+    }
+
+    const payload = { name: trimmedName }
+    const trimmedEmail = personForm.email.trim()
+    if (trimmedEmail) {
+      payload.email = trimmedEmail
+    }
+
+    setPersonFormSubmitting(true)
+    try {
+      const created = await createPerson(payload)
+      setPersons(prev => sortPersons([...prev.filter(person => person.id !== created.id), created]))
+      resetPersonForm()
+      setShowPersonModal(false)
+    } catch (err) {
+      setPersonFormError(err.message || String(err))
+    } finally {
+      setPersonFormSubmitting(false)
+    }
+  }
 
   async function handleCreate(payload) {
     setFormSubmitting(true)
@@ -449,6 +509,7 @@ export default function AccountsView() {
             onSubmit={payload => handleCreate(payload)}
             onCancel={() => setShowCreateForm(false)}
             submitting={formSubmitting}
+            onRequestCreatePerson={() => setShowPersonModal(true)}
           />
         </Card>
       )}
@@ -461,8 +522,74 @@ export default function AccountsView() {
             onSubmit={payload => handleUpdate(editingAccount.id, payload)}
             onCancel={() => setEditingAccount(null)}
             submitting={formSubmitting}
+            onRequestCreatePerson={() => setShowPersonModal(true)}
           />
         </Card>
+      )}
+
+      {showPersonModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => {
+            if (!personFormSubmitting) {
+              resetPersonForm()
+              setShowPersonModal(false)
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl space-y-4"
+            onClick={event => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-800">Ajouter une personne</h3>
+            <form onSubmit={handleCreatePersonSubmit} className="space-y-4">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-gray-600">Nom</span>
+                <input
+                  type="text"
+                  value={personForm.name}
+                  onChange={event => setPersonForm(prev => ({ ...prev, name: event.target.value }))}
+                  className="border rounded px-3 py-2"
+                  placeholder="Marie Dupont"
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-gray-600">Email</span>
+                <input
+                  type="email"
+                  value={personForm.email}
+                  onChange={event => setPersonForm(prev => ({ ...prev, email: event.target.value }))}
+                  className="border rounded px-3 py-2"
+                  placeholder="marie.dupont@example.org"
+                />
+              </label>
+              {personFormError && <p className="text-sm text-red-600">{personFormError}</p>}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!personFormSubmitting) {
+                      resetPersonForm()
+                      setShowPersonModal(false)
+                    }
+                  }}
+                  className="px-4 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                  disabled={personFormSubmitting}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                  disabled={personFormSubmitting}
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

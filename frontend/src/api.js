@@ -120,6 +120,34 @@ export async function getPersons() {
   return jsonOrThrow(res, 'GET /persons failed');
 }
 
+export async function createPerson(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Person payload must be an object');
+  }
+
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  if (!name) {
+    throw new Error('Le nom de la personne est obligatoire.');
+  }
+
+  const body = { name };
+  if (payload.email !== undefined) {
+    if (payload.email === null) {
+      body.email = null;
+    } else {
+      const trimmedEmail = String(payload.email).trim();
+      body.email = trimmedEmail || null;
+    }
+  }
+
+  const res = await fetch(`${API_URL}/persons`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return jsonOrThrow(res, 'POST /persons failed');
+}
+
 export async function createAccount(payload) {
   const body = serializeAccountPayload(payload);
   const res = await fetch(`${API_URL}/accounts`, {
