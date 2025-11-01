@@ -721,6 +721,15 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           duplicates: summary.duplicates,
         };
 
+        if (summary.ignored.duplicates > 0) {
+          const count = summary.ignored.duplicates;
+          const message =
+            count === 1
+              ? '1 transaction a été ignorée car elle existe déjà dans la base.'
+              : `${count} transactions ont été ignorées car elles existent déjà dans la base.`;
+          report.message = message;
+        }
+
         await client.query(
           `UPDATE import_batch
            SET status = $2, rows_count = $3, message = $4
@@ -741,6 +750,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
     return res.status(201).json({
       import_batch_id: result.importBatch.id,
       report: result.report,
+      message: result.report.message ?? null,
     });
   } catch (error) {
     if (error?.code === '23505') {

@@ -358,6 +358,9 @@ function ImportsDashboard() {
         })
       }
       setPostResp(data)
+      if (data?.message) {
+        alert(data.message)
+      }
       if (data?.import_batch_id) {
         setBatchId(String(data.import_batch_id))
       }
