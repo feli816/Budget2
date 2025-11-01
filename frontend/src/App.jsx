@@ -40,6 +40,7 @@ function ImportReportView({ report }) {
   const balances = details.balances || {}
   const expectedBalances = balances.expected || {}
   const actualBalances = balances.actual || {}
+  const duplicates = Array.isArray(details.duplicates) ? details.duplicates : []
 
   const accountsRows = accounts.map(account => [
     <div key={`name-${account.id || account.iban || account.name}`} className="font-medium">
@@ -108,6 +109,21 @@ function ImportReportView({ report }) {
           emptyLabel="Aucune catégorie utilisée"
         />
       </Card>
+
+      {duplicates.length > 0 ? (
+        <Card title="Transactions ignorées (doublons détectés)">
+          <Table
+            headers={["Ligne", "Description", "Date", "Montant"]}
+            rows={duplicates.map(duplicate => [
+              duplicate?.line ?? '-',
+              duplicate?.description || '-',
+              duplicate?.date || '-',
+              formatAmount(duplicate?.amount),
+            ])}
+            emptyLabel="Aucun doublon détecté"
+          />
+        </Card>
+      ) : null}
 
       <Card title="Balances">
         <div className="grid gap-4 md:grid-cols-2">
