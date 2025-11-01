@@ -255,8 +255,10 @@ function parseWorksheet(worksheet, headerRowNumber = HEADER_ROW, firstDataRowNum
 
   const rows = [];
   const startRowNumber = firstDataRowNumber && firstDataRowNumber > headerRowNumber ? firstDataRowNumber : headerRowNumber + 1;
+  const worksheetRowCount = Number.isInteger(worksheet?.rowCount) && worksheet.rowCount > 0 ? worksheet.rowCount : worksheet.actualRowCount;
 
-  for (let rowNumber = startRowNumber; rowNumber <= worksheet.actualRowCount; rowNumber += 1) {
+  for (let rowNumber = startRowNumber; rowNumber <= worksheetRowCount; rowNumber += 1) {
+    if (rowNumber < 1 || (worksheet?.rowCount && rowNumber > worksheet.rowCount)) continue;
     const row = worksheet.getRow(rowNumber);
     if (!row || row.cellCount === 0) continue;
 
@@ -322,6 +324,10 @@ async function parseExcelFile(buffer, options = {}) {
   }
 
   const { headerRowNumber, firstDataRowNumber } = resolveWorksheetRows(options.startRow);
+
+  const startRow = firstDataRowNumber ?? headerRowNumber + 1;
+  const lastRow = worksheet?.rowCount ?? worksheet?.actualRowCount ?? 0;
+  console.debug(`[parseExcelFile] lignes traitées: ${startRow} → ${lastRow}`);
 
   const metadata = extractMetadata(worksheet, headerRowNumber);
   const rows = parseWorksheet(worksheet, headerRowNumber, firstDataRowNumber);
