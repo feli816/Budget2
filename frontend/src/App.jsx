@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import {
   Badge,
@@ -215,6 +215,30 @@ function ImportsDashboard() {
   const [filters, setFilters] = useState({ accountId: '', categoryId: '', limit: '50' })
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('lastImport')
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (parsed.batchId) setBatchId(String(parsed.batchId))
+      if (parsed.manualIban) setManualIban(parsed.manualIban)
+      if (parsed.manualStartRow) setManualStartRow(String(parsed.manualStartRow))
+      if (parsed.fileName) setFile({ name: parsed.fileName })
+      if (Object.prototype.hasOwnProperty.call(parsed, 'report')) {
+        setReport(parsed.report ?? null)
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed, 'checkReport')) {
+        if (Array.isArray(parsed.checkReport)) {
+          setCheckReport(parsed.checkReport)
+        } else if (parsed.checkReport === null) {
+          setCheckReport(null)
+        }
+      }
+    } catch (error) {
+      console.warn('Impossible de restaurer le dernier import', error)
+    }
+  }, [])
+
+  useEffect(() => {
     getHealth().then(setHealth).catch(e => setImportErr(e.message))
   }, [])
 
@@ -262,6 +286,36 @@ function ImportsDashboard() {
   const uploadEnabled =
     health?.ENABLE_UPLOAD === true && health?.ENABLE_XLSX === true && health?.DISABLE_DB === false
 
+  const fileName = file?.name ?? ''
+  const isFileInstance = typeof File !== 'undefined' && file instanceof File
+  const isCachedFile = Boolean(file) && !isFileInstance
+
+  useEffect(() => {
+    if (!batchId) return
+    try {
+      const payload = {
+        batchId,
+        manualIban,
+        manualStartRow,
+        fileName: fileName || null,
+        report: report ?? null,
+        checkReport: Array.isArray(checkReport) ? checkReport : null,
+      }
+      localStorage.setItem('lastImport', JSON.stringify(payload))
+    } catch (error) {
+      console.warn("Impossible d'enregistrer le dernier import", error)
+    }
+  }, [batchId, manualIban, manualStartRow, fileName, report, checkReport])
+
+  const handleResetImportState = useCallback(() => {
+    try {
+      localStorage.removeItem('lastImport')
+    } catch (error) {
+      console.warn("Impossible de nettoyer l'état du dernier import", error)
+    }
+    window.location.reload()
+  }, [])
+
   async function handleCreateImport() {
     setImportErr('')
     setBusy(true)
@@ -270,7 +324,10 @@ function ImportsDashboard() {
 
     try {
       let data
-      if (uploadEnabled && file) {
+      if (uploadEnabled) {
+        if (!isFileInstance) {
+          throw new Error('Veuillez sélectionner à nouveau votre fichier Excel avant de relancer un import.')
+        }
         if (!file.name.toLowerCase().endsWith('.xlsx')) {
           throw new Error('Un fichier .xlsx est attendu.')
         }
@@ -418,13 +475,19 @@ function ImportsDashboard() {
                 onChange={e => setFile(e.target.files?.[0] || null)}
                 className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
               />
+              {fileName ? (
+                <p className="mt-1 text-xs text-gray-500">
+                  Fichier sélectionné : <span className="font-medium">{fileName}</span>
+                  {isCachedFile ? ' (à re-sélectionner pour un nouvel import)' : ''}
+                </p>
+              ) : null}
             </div>
           )}
 
           <div className="flex flex-wrap gap-2">
             <button
               onClick={handleCreateImport}
-              disabled={busy || (uploadEnabled && !file)}
+              disabled={busy || (uploadEnabled && !isFileInstance)}
               className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
             >
               Créer un import (POST /imports/excel)
@@ -487,6 +550,13 @@ function ImportsDashboard() {
               className="px-4 py-2 rounded bg-yellow-500 text-white hover:bg-yellow-600 disabled:opacity-50"
             >
               Voir le rapport de contrôle
+            </button>
+
+            <button
+              onClick={handleResetImportState}
+              className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              Réinitialiser l'état de l'import
             </button>
           </div>
 
