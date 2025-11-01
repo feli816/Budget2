@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'crypto';
+import crypto from 'node:crypto';
 import ExcelJS from 'exceljs';
 
 import { pool, withTransaction } from '../db.js';
@@ -171,11 +171,17 @@ function formatDate(value) {
   return `${year}-${month}-${day}`;
 }
 
-function computeTransactionHash(iban, date, amount, label) {
-  const hash = createHash('sha256');
-  const normalizedLabel = normalizeLabel(label);
-  hash.update(`${iban}|${date}|${Number(amount).toFixed(2)}|${normalizedLabel}`);
-  return hash.digest('hex');
+function computeTransactionKey(iban, dateValue, description, amount) {
+  const normalizedDateValue = dateValue instanceof Date
+    ? dateValue.toISOString().slice(0, 10)
+    : String(dateValue ?? '').trim();
+  const normalized = [
+    String(iban ?? '').trim().toUpperCase(),
+    normalizedDateValue,
+    String(description ?? '').trim().toLowerCase(),
+    Number(amount).toFixed(2),
+  ].join('|');
+  return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
 function extractMetadata(worksheet, headerRowNumber = HEADER_ROW) {
@@ -361,21 +367,35 @@ async function parseExcelFile(buffer, options = {}) {
   return { metadata, rows };
 }
 
-async function loadExistingHashes(client, iban, minDate, maxDate) {
+async function loadExistingHashes(client, iban) {
   const hashes = new Set();
-  if (!iban || !minDate || !maxDate) return hashes;
+  if (!iban) return hashes;
 
   const { rows } = await client.query(
-    `SELECT t.description, t.amount, t.occurred_on
+    `SELECT t.hash_key, t.value_date, t.occurred_on, t.description, t.amount, a.iban AS account_iban
      FROM transaction t
      JOIN account a ON a.id = t.account_id
-     WHERE a.iban = $1
-       AND t.occurred_on BETWEEN $2 AND $3`,
-    [iban, minDate, maxDate],
+     WHERE a.iban = $1`,
+    [iban],
   );
 
   for (const row of rows) {
-    hashes.add(computeTransactionHash(iban, row.occurred_on, Number(row.amount), row.description));
+    if (row?.hash_key) {
+      hashes.add(row.hash_key);
+      continue;
+    }
+
+    const normalizedIban = normalizeIban(row?.account_iban);
+    const amount = Number(row?.amount);
+    if (!Number.isFinite(amount) || !normalizedIban) continue;
+
+    const fallbackKey = computeTransactionKey(
+      normalizedIban,
+      row?.value_date || row?.occurred_on || '',
+      row?.description || '',
+      amount,
+    );
+    hashes.add(fallbackKey);
   }
 
   return hashes;
@@ -423,7 +443,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
       parsed.metadata.iban = manualIban;
     }
 
-    const fileHash = hasFile ? createHash('sha256').update(buffer).digest('hex') : null;
+    const fileHash = hasFile ? crypto.createHash('sha256').update(buffer).digest('hex') : null;
 
     if (!parsed.rows.length) {
       throw badRequest('Aucune opération détectée dans le fichier.');
@@ -437,6 +457,13 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
     if (manualIban) ibans.add(manualIban);
     if (!ibans.size) {
       throw badRequest("Impossible de déterminer l'IBAN du compte associé.");
+    }
+
+    if (!DISABLE_DB && fileHash) {
+      const { rows } = await pool.query('SELECT id FROM import_batch WHERE hash = $1', [fileHash]);
+      if (rows.length) {
+        throw conflict('Ce fichier a déjà été importé.');
+      }
     }
 
     // ----- MODE HORS-DB : on retourne un rapport sans rien écrire -----
@@ -456,6 +483,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           },
           actual: { start: null, end: null },
         },
+        duplicates: [],
       };
 
       const stubBatch = {
@@ -519,22 +547,16 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
         }));
 
         const hashesByAccount = new Map();
-        const rowsByAccount = new Map();
+        const ibansInFile = new Set();
         for (const row of parsed.rows) {
           const iban = row.iban || parsed.metadata.iban;
           const normalizedIban = normalizeIban(iban);
           if (!normalizedIban) continue;
-          if (!rowsByAccount.has(normalizedIban)) rowsByAccount.set(normalizedIban, []);
-          rowsByAccount.get(normalizedIban).push(row);
+          ibansInFile.add(normalizedIban);
         }
 
-        for (const [iban, rowsForAccount] of rowsByAccount.entries()) {
-          const dates = rowsForAccount.map((r) => r.occurred_on).filter(Boolean).sort();
-          if (!dates.length) {
-            hashesByAccount.set(iban, new Set());
-            continue;
-          }
-          const existingHashes = await loadExistingHashes(client, iban, dates[0], dates[dates.length - 1]);
+        for (const iban of ibansInFile.values()) {
+          const existingHashes = await loadExistingHashes(client, iban);
           hashesByAccount.set(iban, existingHashes);
         }
 
@@ -552,6 +574,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
             },
             actual: { start: null, end: null },
           },
+          duplicates: [],
         };
 
         for (const row of parsed.rows) {
@@ -567,14 +590,20 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
             continue;
           }
 
-          const hash = computeTransactionHash(iban, row.occurred_on, row.amount, row.description);
+          const txKey = computeTransactionKey(iban, row.value_date || row.occurred_on || '', row.description, row.amount);
           let accountHashes = hashesByAccount.get(iban);
           if (!accountHashes) {
             accountHashes = new Set();
             hashesByAccount.set(iban, accountHashes);
           }
-          if (seenHashes.has(hash) || accountHashes.has(hash)) {
+          if (seenHashes.has(txKey) || accountHashes.has(txKey)) {
             summary.ignored.duplicates += 1;
+            summary.duplicates.push({
+              line: row.rowNumber,
+              description: row.description,
+              amount: row.amount,
+              date: row.value_date || row.occurred_on || null,
+            });
             continue;
           }
 
@@ -613,14 +642,15 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
             row.raw_description || row.description,
             row.balance_after ?? null,
             'real',
+            txKey,
           ];
 
           const inserted = await client.query(
             `INSERT INTO transaction (
                account_id, import_batch_id, rule_id, project_id, category_id, external_id,
-               occurred_on, value_date, amount, currency_code, description, raw_description, balance_after, status
+               occurred_on, value_date, amount, currency_code, description, raw_description, balance_after, status, hash_key
              )
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
              RETURNING *`,
             values,
           );
@@ -633,8 +663,8 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
             description: row.description,
           });
           createdTransactions.push(transaction);
-          seenHashes.add(hash);
-          accountHashes.add(hash);
+          seenHashes.add(txKey);
+          accountHashes.add(txKey);
 
           summary.totals.created += 1;
 
@@ -688,6 +718,7 @@ router.post('/excel', uploadSingle, async (req, res, next) => {
           categories: Array.from(summary.categories.values()).sort((a, b) => b.count - a.count),
           accounts: Array.from(summary.accounts.values()),
           balances: summary.balances,
+          duplicates: summary.duplicates,
         };
 
         await client.query(
@@ -815,6 +846,14 @@ function normalizeReport(rawReport) {
         end: toNumberOrNull(actualSource.end),
       },
     },
+    duplicates: Array.isArray(rawReport.duplicates)
+      ? rawReport.duplicates.map((duplicate) => ({
+          line: toNumberOrNull(duplicate?.line),
+          description: typeof duplicate?.description === 'string' ? duplicate.description : '',
+          amount: toNumberOrNull(duplicate?.amount),
+          date: typeof duplicate?.date === 'string' ? duplicate.date : null,
+        }))
+      : [],
   };
 }
 
