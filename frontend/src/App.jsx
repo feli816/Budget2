@@ -221,6 +221,7 @@ function ImportsDashboard() {
   const [report, setReport] = useState(null)
   const [importSummary, setImportSummary] = useState(null)
   const [checkReport, setCheckReport] = useState(null)
+  const [classificationReport, setClassificationReport] = useState(null)
 
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
@@ -244,7 +245,19 @@ function ImportsDashboard() {
       }
       if (Object.prototype.hasOwnProperty.call(parsed, 'checkReport')) {
         if (Array.isArray(parsed.checkReport)) {
-          setCheckReport(parsed.checkReport)
+          if (parsed.checkReport.length === 0) {
+            setCheckReport([])
+          } else {
+            const hasDuplicateShape = parsed.checkReport.some(item =>
+              item && Object.prototype.hasOwnProperty.call(item, 'line')
+            )
+            if (hasDuplicateShape) {
+              setCheckReport(parsed.checkReport)
+            } else {
+              setCheckReport(null)
+              setClassificationReport(parsed.checkReport)
+            }
+          }
         } else if (parsed.checkReport === null) {
           setCheckReport(null)
         }
@@ -329,6 +342,9 @@ function ImportsDashboard() {
     } catch (error) {
       console.warn("Impossible de nettoyer l'état du dernier import", error)
     }
+    setCheckReport(null)
+    setClassificationReport(null)
+    setPostResp(null)
     window.location.reload()
   }, [])
 
@@ -337,6 +353,8 @@ function ImportsDashboard() {
     setBusy(true)
     setReport(null)
     setCheckReport(null)
+    setClassificationReport(null)
+    setPostResp(null)
 
     try {
       let data
@@ -360,6 +378,10 @@ function ImportsDashboard() {
       setPostResp(data)
       if (data?.message) {
         alert(data.message)
+      }
+      if (Array.isArray(data?.report?.duplicates)) {
+        const duplicates = data.report.duplicates
+        setCheckReport(duplicates.length > 0 ? duplicates : [])
       }
       if (data?.import_batch_id) {
         setBatchId(String(data.import_batch_id))
@@ -394,7 +416,7 @@ function ImportsDashboard() {
     setBusy(true)
     try {
       const data = await getImportCheckReport(batchId)
-      setCheckReport(Array.isArray(data) ? data : [])
+      setClassificationReport(Array.isArray(data) ? data : [])
     } catch (e) {
       setImportErr(e.message || String(e))
     } finally {
@@ -583,6 +605,31 @@ function ImportsDashboard() {
         </div>
       </Card>
 
+
+      {postResp?.message ? (
+        <Card title="Alerte import">
+          <p className="text-sm text-amber-700">{postResp.message}</p>
+        </Card>
+      ) : null}
+
+      {Array.isArray(checkReport) && checkReport.length > 0 && (
+        <Card title="Transactions ignorées (doublons détectés)">
+          <Table
+            headers={["Ligne", "Description", "Date", "Montant"]}
+            rows={checkReport.map(d => {
+              const amountValue = typeof d?.amount === 'number' ? d.amount : Number(d?.amount)
+              const displayAmount = Number.isFinite(amountValue) ? formatAmount(amountValue) : '-'
+              return [
+                d?.line ?? '-',
+                d?.description ?? '-',
+                d?.date ?? '-',
+                displayAmount,
+              ]
+            })}
+          />
+        </Card>
+      )}
+
       {importErrors.length > 0 && (
         <Card title="Erreurs d'import">
           <div className="overflow-x-auto">
@@ -685,8 +732,8 @@ function ImportsDashboard() {
         <ImportReportView report={report} />
       )}
 
-      {checkReport !== null && (
-        <ImportCheckReportTable rows={checkReport} />
+      {classificationReport !== null && (
+        <ImportCheckReportTable rows={classificationReport} />
       )}
     </div>
   )
